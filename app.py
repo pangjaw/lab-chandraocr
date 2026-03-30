@@ -113,10 +113,20 @@ if uploaded_files:
             tahun, bulan = tgl.split("-")[-1], int(tgl.split("-")[1])
 
             # Cari Lokasi
+           # --- LOGIKA LOKASI (ANTI-SPASI) ---
             found_full = None
             found_short = None
+            
+            # Buat versi nama file tanpa spasi untuk pengecekan
+            name_no_space = name_only.upper().replace(" ", "")
+
             for k, v in st.session_state.mapping_lokasi.items():
-                if k in name_only.upper() or v in name_only.upper():
+                # Buat versi key database tanpa spasi
+                key_no_space = k.upper().replace(" ", "")
+                val_no_space = v.upper().replace(" ", "")
+                
+                # Cek apakah key (tanpa spasi) ada di dalam nama file (tanpa spasi)
+                if key_no_space in name_no_space or val_no_space in name_no_space:
                     found_full, found_short = k, v
                     break
             
