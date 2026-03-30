@@ -2,19 +2,18 @@ import streamlit as st
 import re
 import os
 import zipfile
+import json
 from io import BytesIO
 from google.cloud import firestore
 from google.oauth2 import service_account
-import json
 
-# --- KONEKSI KE FIRESTORE ---
-# Simpan isi file JSON dari Firebase tadi ke Streamlit Secrets
+# --- KONEKSI FIRESTORE ---
 if "firebase" in st.secrets:
     key_dict = json.loads(st.secrets["firebase"]["key"])
     creds = service_account.Credentials.from_service_account_info(key_dict)
     db = firestore.Client(credentials=creds, project=key_dict['project_id'])
 else:
-    st.error("Silakan masukkan Firebase Key di Streamlit Secrets!")
+    st.error("Masukkan Firebase Key di Streamlit Secrets!")
     st.stop()
 
 # --- FUNGSI DATABASE ---
@@ -22,52 +21,81 @@ def get_user_db(email):
     doc_ref = db.collection("users").document(email)
     doc = doc_ref.get()
     if doc.exists:
-        return doc.to_dict().get("mapping", {"BOGOR": "BOO"})
+        return doc.to_dict().get("mapping", {})
     return {"BOGOR": "BOO"}
 
 def save_user_db(email, mapping):
     db.collection("users").document(email).set({"mapping": mapping})
 
-# --- SIMULASI LOGIN (UNTUK DEMO STREAMLIT) ---
-# Catatan: Untuk Google Login sungguhan di Streamlit, 
-# biasanya menggunakan library 'streamlit-google-auth'
-st.title("📝 Ceklis Sintelis Pro")
-
+# --- LOGIN SESSION ---
 if 'user_email' not in st.session_state:
-    st.info("Silakan Login untuk mengakses database lokasi Anda.")
-    # Ini adalah simulasi, di versi deploy gunakan st.login
-    email_input = st.text_input("Masukkan Email Google Anda untuk Demo:")
+    st.title("📝 Ceklis Sintelis Login")
+    email_input = st.text_input("Masukkan Email Google:")
     if st.button("Masuk"):
         st.session_state.user_email = email_input.lower()
         st.rerun()
     st.stop()
 
-# --- JIKA SUDAH LOGIN ---
 user_email = st.session_state.user_email
+
+# Load data awal jika belum ada di session
 if 'mapping_lokasi' not in st.session_state:
     st.session_state.mapping_lokasi = get_user_db(user_email)
 
-st.sidebar.write(f"Logged in as: **{user_email}**")
-if st.sidebar.button("Logout"):
-    del st.session_state.user_email
-    del st.session_state.mapping_lokasi
-    st.rerun()
+# --- FUNGSI CALLBACK (ENTER TO SAVE & CLEAR) ---
+def add_location_callback():
+    val = st.session_state.input_baru
+    if "=" in val:
+        k, v = val.split("=")
+        st.session_state.mapping_lokasi[k.strip().upper()] = v.strip().upper()
+        # Simpan ke Firestore
+        save_user_db(user_email, st.session_state.mapping_lokasi)
+        st.toast(f"Tersimpan: {k.strip().upper()}", icon="✅")
+    # Reset input box
+    st.session_state.input_baru = ""
 
-# --- UI SETTINGS LOKASI ---
-with st.sidebar.expander("Edit Database Lokasi"):
-    new_input = st.text_input("Tambah (Contoh: MASENG=MSG)")
-    if st.button("Simpan Ke Awan"):
-        if "=" in new_input:
-            k, v = new_input.split("=")
-            st.session_state.mapping_lokasi[k.strip().upper()] = v.strip().upper()
-            save_user_db(user_email, st.session_state.mapping_lokasi)
-            st.success("Tersimpan secara permanen!")
+def delete_location(key_to_delete):
+    if key_to_delete in st.session_state.mapping_lokasi:
+        del st.session_state.mapping_lokasi[key_to_delete]
+        save_user_db(user_email, st.session_state.mapping_lokasi)
+        st.toast(f"Dihapus: {key_to_delete}", icon="🗑️")
 
-# --- LOGIKA PROSES FILE (SAMA SEPERTI SEBELUMNYA) ---
+# --- UI SIDEBAR: DATABASE ---
+with st.sidebar:
+    st.header(f"📍 Database {user_email}")
+    
+    # Input Box (Enter to Save)
+    st.text_input(
+        "Tambah Lokasi (BOGOR=BOO lalu Enter)", 
+        key="input_baru", 
+        on_change=add_location_callback
+    )
+    
+    st.divider()
+    st.subheader("Daftar Lokasi")
+    
+    # Menampilkan List dengan Tombol Hapus
+    if not st.session_state.mapping_lokasi:
+        st.info("Database kosong.")
+    else:
+        for k, v in list(st.session_state.mapping_lokasi.items()):
+            col1, col2 = st.columns([3, 1])
+            col1.write(f"**{k}** → {v}")
+            if col2.button("❌", key=f"del_{k}"):
+                delete_location(k)
+                st.rerun()
+
+    if st.sidebar.button("Logout", use_container_width=True):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+
+# --- HALAMAN UTAMA: PROSES FILE ---
+st.title("🚀 Pemroses Nama Ceklis")
 kode_opsi = ["BPBKS1", "BPBKF1", "BPBYE1"]
 selected_kode = st.selectbox("Pilih Kode Unit:", kode_opsi)
 
-uploaded_files = st.file_uploader("Upload PDF Ceklis", type="pdf", accept_multiple_files=True)
+uploaded_files = st.file_uploader("Drag & Drop PDF di sini", type="pdf", accept_multiple_files=True)
 
 if uploaded_files:
     zip_buffer = BytesIO()
@@ -75,26 +103,62 @@ if uploaded_files:
         for uploaded_file in uploaded_files:
             name_only = os.path.splitext(uploaded_file.name)[0]
             
-            # Logika Regex Tanggal
+            # Cari Tanggal
             tgl_match = re.search(r'\d{2}-\d{2}-\d{4}', name_only)
-            if not tgl_match: continue
+            if not tgl_match:
+                st.warning(f"⚠️ {name_only}: Tanggal tidak ditemukan.")
+                continue
             
             tgl = tgl_match.group()
             tahun, bulan = tgl.split("-")[-1], int(tgl.split("-")[1])
 
-            # Cari Lokasi dari database session_state
-            found_short = next((st.session_state.mapping_lokasi[k] for k in st.session_state.mapping_lokasi if k in name_only.upper()), None)
+            # Cari Lokasi
+            found_full = None
+            found_short = None
+            for k, v in st.session_state.mapping_lokasi.items():
+                if k in name_only.upper() or v in name_only.upper():
+                    found_full, found_short = k, v
+                    break
             
             if not found_short:
-                st.warning(f"Lokasi {name_only} belum terdaftar.")
+                st.error(f"❌ {name_only}: Lokasi tidak ada di database!")
                 continue
 
-            # Logika Pemisahan Aset
-            # (Gunakan logika pemisahan aset dari kode sebelumnya di sini)
-            # ... [Bagian Logika Aset] ...
-            
-            # Simulasi simpan hasil
-            new_name = f"{tahun}-{bulan}_Resor_1.21_{selected_kode}_{found_short}_{tgl}.pdf"
-            zip_file.writestr(new_name, uploaded_file.getvalue())
+            # Logika Pemisahan Aset & Nama Perawatan
+            clean = name_only.upper().replace(tgl, "").replace(str(found_full), "").replace(str(found_short), "").strip("_ ")
+            parts = clean.split("_")
+            perawatan_parts = []
+            assets = []
 
-    st.download_button("📥 Download Hasil (.ZIP)", zip_buffer.getvalue(), "Hasil.zip")
+            for p in parts:
+                p = p.strip()
+                if "," in p:
+                    assets.extend([a.strip() for a in p.split(",") if a.strip()])
+                elif any(char.isdigit() for char in p) and not any(x in p for x in ["MINGGUAN", "BULANAN", "TAHUNAN"]):
+                    assets.append(p)
+                elif p != "":
+                    perawatan_parts.append(p)
+            
+            # Tanya aset jika kosong
+            if not assets:
+                manual_a = st.text_input(f"Aset untuk {name_only} (pisah koma):", key=f"m_{name_only}")
+                if manual_a:
+                    assets = [a.strip() for a in manual_a.split(",")]
+                else:
+                    continue
+
+            nama_perawatan = "_".join(perawatan_parts).replace(" ", "_").strip("_")
+
+            # Bungkus ke ZIP
+            for asset in assets:
+                new_name = f"{tahun}-{bulan}_Resor 1.21 Boo_{selected_kode}_{nama_perawatan}_{asset}_{found_short}_{tgl}.pdf"
+                zip_file.writestr(new_name, uploaded_file.getvalue())
+                st.success(f"Dibuat: {new_name}")
+
+    st.divider()
+    st.download_button(
+        "📥 Download Semua File (.ZIP)", 
+        zip_buffer.getvalue(), 
+        "Ceklis_Sintelis_Done.zip",
+        use_container_width=True
+    )
