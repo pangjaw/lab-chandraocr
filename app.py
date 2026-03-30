@@ -52,11 +52,15 @@ if not st.session_state.get('connected'):
     st.title("📝 Ceklis Sintelis Pro")
     st.write("Selamat datang! Silakan login dengan akun Google kantor Anda.")
     authenticator.login()
-    st.stop()
+    st.stop() # Sangat penting agar kode di bawah tidak error karena user_info kosong
 
 # Jika sudah login, ambil info user
 user_info = st.session_state.get('user_info')
-user_email = user_info.get('email').lower()
+if user_info:
+    user_email = user_info.get('email').lower()
+else:
+    st.error("Gagal mengambil data profil.")
+    st.stop()
 
 if 'mapping_lokasi' not in st.session_state:
     st.session_state.mapping_lokasi = get_user_db(user_email)
@@ -109,7 +113,7 @@ uploaded_files = st.file_uploader("Drag & Drop PDF di sini", type="pdf", accept_
 
 if uploaded_files:
     zip_buffer = BytesIO()
-    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED) as zip_file:
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file: # Gunakan "w" untuk buat baru
         for uploaded_file in uploaded_files:
             name_only = os.path.splitext(uploaded_file.name)[0]
             
@@ -166,5 +170,12 @@ if uploaded_files:
                 zip_file.writestr(new_name, uploaded_file.getvalue())
                 st.success(f"Dibuat: {new_name}")
 
+            # Pindahkan download button ke dalam blok 'if uploaded_files'
+    st.download_button(
+        label="📥 Download ZIP", 
+        data=zip_buffer.getvalue(), 
+        file_name="Ceklis_Done.zip", 
+        use_container_width=True
+    )
     st.divider()
     st.download_button("📥 Download ZIP", zip_buffer.getvalue(), "Ceklis_Done.zip", use_container_width=True)
