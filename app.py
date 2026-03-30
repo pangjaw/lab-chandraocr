@@ -9,19 +9,19 @@ from google.cloud import firestore
 from google.oauth2 import service_account
 
 # --- 1. KONFIGURASI GOOGLE AUTH ---
-# Pastikan CLIENT_ID ini sudah sesuai dengan yang ada di Google Cloud Console
-GOOGLE_CLIENT_ID = "MASUKKAN_CLIENT_ID_ANDA.apps.googleusercontent.com"
+GOOGLE_CLIENT_ID = "934668020955-2o8kar700drh7lb6chu1ugnmld3shul7.apps.googleusercontent.com"
 
+# Coba gunakan parameter minimal dulu untuk menghindari TypeError
 authenticator = Authenticate(
     client_id=GOOGLE_CLIENT_ID,
-    client_secret="NOT_REQUIRED", 
-    redirect_uri="https://gantinamapdf.streamlit.app", 
+    client_secret="NOT_USED",
+    redirect_uri="https://gantinamapdf.streamlit.app",
     cookie_name="google_auth_cookie",
     key="secret_cookie_key",
-    cookie_duration_days=30,
+    cookie_duration_days=30
 )
 
-# Cek status login otomatis
+# Cek status login
 authenticator.check_authenticator()
 
 # --- 2. KONEKSI FIRESTORE ---
