@@ -4,10 +4,27 @@ import os
 import zipfile
 import json
 from io import BytesIO
+from streamlit_google_auth import Authenticate # Library baru
 from google.cloud import firestore
 from google.oauth2 import service_account
 
-# --- KONEKSI FIRESTORE ---
+# --- 1. KONFIGURASI GOOGLE AUTH ---
+# Masukkan Client ID yang didapat dari Google Cloud Console
+GOOGLE_CLIENT_ID = "MASUKKAN_CLIENT_ID_ANDA.apps.googleusercontent.com"
+
+authenticator = Authenticate(
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret="NOT_REQUIRED_FOR_THIS_LIB", # Bisa diisi sembarang
+    redirect_uri="https://nama-app-kamu.streamlit.app", # Sesuaikan dengan URL web kamu
+    cookie_name="google_auth_cookie",
+    key="secret_cookie_key",
+    cookie_duration_days=30,
+)
+
+# Cek apakah user sudah login sebelumnya (via cookie)
+authenticator.check_authenticator()
+
+# --- 2. KONEKSI FIRESTORE (Database) ---
 if "firebase" in st.secrets:
     key_dict = json.loads(st.secrets["firebase"]["key"])
     creds = service_account.Credentials.from_service_account_info(key_dict)
@@ -15,6 +32,47 @@ if "firebase" in st.secrets:
 else:
     st.error("Masukkan Firebase Key di Streamlit Secrets!")
     st.stop()
+
+def get_user_db(email):
+    doc_ref = db.collection("users").document(email)
+    doc = doc_ref.get()
+    return doc.to_dict().get("mapping", {"BOGOR": "BOO"}) if doc.exists else {"BOGOR": "BOO"}
+
+def save_user_db(email, mapping):
+    db.collection("users").document(email).set({"mapping": mapping})
+
+# --- 3. TAMPILAN HALAMAN LOGIN ---
+if not st.session_state.get('connected'):
+    st.title("📝 Ceklis Sintelis Pro")
+    st.write("Selamat datang! Silakan login dengan akun Google kantor Anda.")
+    
+    # Tombol Login Google Asli
+    authenticator.login()
+    st.stop()
+
+# --- 4. JIKA SUDAH BERHASIL LOGIN ---
+# Mengambil info email dari Google
+user_info = st.session_state.get('user_info')
+user_email = user_info.get('email').lower()
+
+if 'mapping_lokasi' not in st.session_state:
+    st.session_state.mapping_lokasi = get_user_db(user_email)
+
+# Tampilan Sidebar dengan Nama & Foto Profil (Opsional)
+with st.sidebar:
+    if user_info.get('picture'):
+        st.image(user_info.get('picture'), width=50)
+    st.write(f"Halo, **{user_info.get('name')}**")
+    st.caption(user_email)
+    
+    if st.button("Log Out"):
+        authenticator.logout()
+        st.rerun()
+    st.divider()
+
+# --- 5. LANJUTKAN DENGAN LOGIKA DATABASE & PROSES FILE ---
+# (Gunakan fungsi add_location_callback dan proses file yang sebelumnya di sini)
+# ...
 
 # --- FUNGSI DATABASE ---
 def get_user_db(email):
