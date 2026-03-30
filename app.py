@@ -9,31 +9,27 @@ from google.cloud import firestore
 from google.oauth2 import service_account
 
 # --- 1. KONFIGURASI GOOGLE AUTH ---
-# Ambil data dari Secrets Streamlit Cloud
-GOOGLE_CLIENT_ID = st.secrets["google_auth"]["client_id"]
-GOOGLE_CLIENT_SECRET = st.secrets["google_auth"]["client_secret"]
-REDIRECT_URI = st.secrets["google_auth"]["redirect_uri"]
+google_secrets = st.secrets["google_auth"]
 
-# Masukkan variabel di atas ke dalam Authenticate
 authenticator = Authenticate(
-    secret_key=st.secrets["google_auth"]["secret_key"], # Pastikan di Secrets ada ini
-    cookie_name="google_auth_cookie",
+    secret_key=google_secrets["secret_key"],
+    cookie_name=google_secrets["cookie_name"],
     cookie_expiry_days=30,
-    client_id=st.secrets["google_auth"]["client_id"],
-    client_secret=st.secrets["google_auth"]["client_secret"],
-    redirect_uri=st.secrets["google_auth"]["redirect_uri"],
+    client_id=google_secrets["client_id"],
+    client_secret=google_secrets["client_secret"],
+    redirect_uri=google_secrets["redirect_uri"],
 )
 
-# Perbaikan Typo: Bukan check_authenticator(), tapi check_authentification()
+# Cek status login (perbaikan nama fungsi)
 authenticator.check_authentification()
 
 # --- 2. KONEKSI FIRESTORE ---
 if "firebase" in st.secrets:
-    key_dict = json.loads(st.secrets["firebase"]["key"])
+    key_dict = dict(st.secrets["firebase"])
     creds = service_account.Credentials.from_service_account_info(key_dict)
     db = firestore.Client(credentials=creds, project=key_dict['project_id'])
 else:
-    st.error("Masukkan Firebase Key di Streamlit Secrets!")
+    st.error("Konfigurasi Firebase tidak ditemukan di Secrets!")
     st.stop()
 
 # --- 3. FUNGSI DATABASE ---
@@ -42,7 +38,7 @@ def get_user_db(email):
     doc = doc_ref.get()
     if doc.exists:
         return doc.to_dict().get("mapping", {})
-    return {"BOGOR": "BOO"} # Default jika user baru
+    return {"BOGOR": "BOO"} # Default
 
 def save_user_db(email, mapping):
     db.collection("users").document(email).set({"mapping": mapping})
@@ -50,22 +46,18 @@ def save_user_db(email, mapping):
 # --- 4. LOGIKA LOGIN ---
 if not st.session_state.get('connected'):
     st.title("📝 Ceklis Sintelis Pro")
-    st.write("Selamat datang! Silakan login dengan akun Google kantor Anda.")
+    st.info("Silakan login dengan akun Google kantor Anda untuk melanjutkan.")
     authenticator.login()
-    st.stop() # Sangat penting agar kode di bawah tidak error karena user_info kosong
+    st.stop()
 
 # Jika sudah login, ambil info user
 user_info = st.session_state.get('user_info')
-if user_info:
-    user_email = user_info.get('email').lower()
-else:
-    st.error("Gagal mengambil data profil.")
-    st.stop()
+user_email = user_info.get('email').lower()
 
 if 'mapping_lokasi' not in st.session_state:
     st.session_state.mapping_lokasi = get_user_db(user_email)
 
-# --- 5. FUNGSI CALLBACK & DATABASE MANAGEMENT ---
+# --- 5. CALLBACK DATABASE ---
 def add_location_callback():
     val = st.session_state.input_baru
     if "=" in val:
@@ -87,7 +79,7 @@ with st.sidebar:
         st.image(user_info.get('picture'), width=50)
     st.write(f"Halo, **{user_info.get('name')}**")
     
-    st.header(f"📍 Database Lokasi")
+    st.header("📍 Database Lokasi")
     st.text_input("Tambah (LOKASI=KODE lalu Enter)", key="input_baru", on_change=add_location_callback)
     
     st.divider()
@@ -109,11 +101,12 @@ st.title("🚀 Pemroses Nama Ceklis")
 kode_opsi = ["BPBKS1", "BPBKF1", "BPBYE1"]
 selected_kode = st.selectbox("Pilih Kode Unit:", kode_opsi)
 
-uploaded_files = st.file_uploader("Drag & Drop PDF di sini", type="pdf", accept_multiple_files=True)
+uploaded_files = st.file_uploader("Upload PDF (Bisa banyak sekaligus)", type="pdf", accept_multiple_files=True)
 
 if uploaded_files:
     zip_buffer = BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file: # Gunakan "w" untuk buat baru
+    # Gunakan mode 'w' untuk ZIP baru
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for uploaded_file in uploaded_files:
             name_only = os.path.splitext(uploaded_file.name)[0]
             
@@ -124,7 +117,8 @@ if uploaded_files:
                 continue
             
             tgl = tgl_match.group()
-            tahun, bulan = tgl.split("-")[-1], int(tgl.split("-")[1])
+            tahun = tgl.split("-")[-1]
+            bulan = int(tgl.split("-")[1])
 
             # --- LOGIKA LOKASI (ANTI-SPASI) ---
             found_full, found_short = None, None
@@ -142,7 +136,7 @@ if uploaded_files:
                 st.error(f"❌ {name_only}: Lokasi tidak ada di database!")
                 continue
 
-            # Logika Pemisahan Aset
+            # Logika Pemisahan Aset & Perawatan
             clean = name_only.upper().replace(tgl, "").replace(str(found_full), "").replace(str(found_short), "").strip("_ ")
             parts = clean.split("_")
             perawatan_parts, assets = [], []
@@ -156,26 +150,26 @@ if uploaded_files:
                 elif p != "":
                     perawatan_parts.append(p)
             
+            # Input aset manual jika tidak terdeteksi
             if not assets:
                 manual_a = st.text_input(f"Aset untuk {name_only} (pisah koma):", key=f"m_{name_only}")
                 if manual_a:
                     assets = [a.strip() for a in manual_a.split(",")]
-                else: continue
+                else:
+                    continue
 
             nama_perawatan = "_".join(perawatan_parts).replace(" ", "_").strip("_")
 
-            # Bungkus ke ZIP
+            # Bungkus ke dalam ZIP
             for asset in assets:
                 new_name = f"{tahun}-{bulan}_Resor 1.21 Boo_{selected_kode}_{nama_perawatan}_{asset}_{found_short}_{tgl}.pdf"
                 zip_file.writestr(new_name, uploaded_file.getvalue())
-                st.success(f"Dibuat: {new_name}")
+                st.success(f"Berhasil diproses: {new_name}")
 
-            # Pindahkan download button ke dalam blok 'if uploaded_files'
+    st.divider()
     st.download_button(
-        label="📥 Download ZIP", 
-        data=zip_buffer.getvalue(), 
-        file_name="Ceklis_Done.zip", 
+        label="📥 Download Semua File (.ZIP)",
+        data=zip_buffer.getvalue(),
+        file_name="Ceklis_Sintelis_Done.zip",
         use_container_width=True
     )
-    st.divider()
-    st.download_button("📥 Download ZIP", zip_buffer.getvalue(), "Ceklis_Done.zip", use_container_width=True)
