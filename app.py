@@ -16,17 +16,16 @@ REDIRECT_URI = st.secrets["google_auth"]["redirect_uri"]
 
 # Masukkan variabel di atas ke dalam Authenticate
 authenticator = Authenticate(
-    client_id=GOOGLE_CLIENT_ID,
-    client_secret=GOOGLE_CLIENT_SECRET,
-    redirect_uri=REDIRECT_URI,
+    secret_key=st.secrets["google_auth"]["secret_key"], # Pastikan di Secrets ada ini
     cookie_name="google_auth_cookie",
-    key="secret_cookie_key",
-    cookie_duration_days=30
+    cookie_expiry_days=30,
+    client_id=st.secrets["google_auth"]["client_id"],
+    client_secret=st.secrets["google_auth"]["client_secret"],
+    redirect_uri=st.secrets["google_auth"]["redirect_uri"],
 )
 
-
-# Cek status login
-authenticator.check_authenticator()
+# Perbaikan Typo: Bukan check_authenticator(), tapi check_authentification()
+authenticator.check_authentification()
 
 # --- 2. KONEKSI FIRESTORE ---
 if "firebase" in st.secrets:
