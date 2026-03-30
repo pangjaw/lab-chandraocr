@@ -23,7 +23,7 @@ authenticator = Authenticate(
     key="secret_cookie_key",
     cookie_duration_days=30
 )
-)
+
 
 # Cek status login
 authenticator.check_authenticator()
