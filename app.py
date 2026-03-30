@@ -9,14 +9,19 @@ from google.cloud import firestore
 from google.oauth2 import service_account
 
 # --- 1. KONFIGURASI GOOGLE AUTH ---
-GOOGLE_CLIENT_ID = "934668020955-2o8kar700drh7lb6chu1ugnmld3shul7.apps.googleusercontent.com"
+# Ambil data dari Secrets Streamlit Cloud
+GOOGLE_CLIENT_ID = st.secrets["google_auth"]["client_id"]
+GOOGLE_CLIENT_SECRET = st.secrets["google_auth"]["client_secret"]
+REDIRECT_URI = st.secrets["google_auth"]["redirect_uri"]
 
-# Coba gunakan parameter minimal dulu untuk menghindari TypeError
+# Masukkan variabel di atas ke dalam Authenticate
 authenticator = Authenticate(
-    secret_path='client_secret.json', # Path ke file JSON kredensial Anda
-    cookie_name='my_cookie',
-    key='my_secret_key',
-    cookie_expiry_days=30
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    redirect_uri=REDIRECT_URI,
+    cookie_name="google_auth_cookie",
+    key="secret_cookie_key",
+    cookie_duration_days=30
 )
 )
 
