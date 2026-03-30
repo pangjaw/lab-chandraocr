@@ -13,12 +13,11 @@ GOOGLE_CLIENT_ID = "934668020955-2o8kar700drh7lb6chu1ugnmld3shul7.apps.googleuse
 
 # Coba gunakan parameter minimal dulu untuk menghindari TypeError
 authenticator = Authenticate(
-    client_id=GOOGLE_CLIENT_ID,
-    client_secret="NOT_USED",
-    redirect_uri="https://gantinamapdf.streamlit.app",
-    cookie_name="google_auth_cookie",
-    key="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",
-    cookie_duration_days=30
+    secret_path='client_secret.json', # Path ke file JSON kredensial Anda
+    cookie_name='my_cookie',
+    key='my_secret_key',
+    cookie_expiry_days=30
+)
 )
 
 # Cek status login
