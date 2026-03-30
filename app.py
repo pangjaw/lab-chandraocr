@@ -17,7 +17,7 @@ authenticator = Authenticate(
     client_secret="NOT_USED",
     redirect_uri="https://gantinamapdf.streamlit.app",
     cookie_name="google_auth_cookie",
-    key="secret_cookie_key",
+    key="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",
     cookie_duration_days=30
 )
 
