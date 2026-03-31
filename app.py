@@ -17,7 +17,6 @@ authenticator = Authenticate(
     google_secrets["redirect_uri"],   # Argumen 3: Redirect URI
     google_secrets["cookie_name"],    # Argumen 4: Cookie Name
     google_secrets["secret_key"],    # Argumen 5: Key/Secret Key
-    30             # Argumen 6: Expiry (Keyword)
 )
 
 # Cek status login (perbaikan nama fungsi)
