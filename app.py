@@ -11,15 +11,14 @@ from google.oauth2 import service_account
 # --- 1. KONFIGURASI GOOGLE AUTH ---
 google_secrets = st.secrets["google_auth"]
 
+# Gunakan cara ini agar tidak dianggap Path File
 authenticator = Authenticate(
-    google_secrets["client_id"],      # Argumen 1: Client ID
-    google_secrets["client_secret"],  # Argumen 2: Client Secret
-    google_secrets["redirect_uri"],   # Argumen 3: Redirect URI
-    google_secrets["cookie_name"],    # Argumen 4: Nama Cookie
-    google_secrets["secret_key"]      # Argumen 5: Key/Secret Key
+    secret_client_id=str(google_secrets["client_id"]),
+    secret_client_secret=str(google_secrets["client_secret"]),
+    secret_redirect_uri=str(google_secrets["redirect_uri"]),
+    cookie_name=str(google_secrets["cookie_name"]),
+    cookie_key=str(google_secrets["secret_key"]),
 )
-
-
 
 # --- 2. KONEKSI FIRESTORE ---
 # Di dalam bagian koneksi Firestore app.py
