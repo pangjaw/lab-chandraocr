@@ -8,35 +8,11 @@ from streamlit_google_auth import Authenticate
 from google.cloud import firestore
 from google.oauth2 import service_account
 
-# --- 1. KONFIGURASI GOOGLE AUTH ---
-import json
+import hashlib
 
-google_secrets = st.secrets["google_auth"]
-
-# Kita buat struktur JSON yang diharapkan oleh library Google
-client_config = {
-    "web": {
-        "client_id": google_secrets["client_id"],
-        "client_secret": google_secrets["client_secret"],
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "redirect_uris": [google_secrets["redirect_uri"]]
-    }
-}
-
-# Simpan ke file sementara agar library bisa membacanya
-with open("client_secrets.json", "w") as f:
-    json.dump(client_config, f)
-st.write("Isi Redirect URI di JSON:", client_config["web"]["redirect_uris"][0])
-# Sekarang panggil Authenticate dengan mengacu pada FILE tersebut
-# Berikan PATH FILE sebagai argumen pertama
-authenticator = Authenticate(
-    "client_secrets.json",           # Argumen 1: Path ke file JSON
-    google_secrets["cookie_name"],   # Argumen 2: Nama Cookie
-    google_secrets["secret_key"],    # Argumen 3: Key
-    30                               # Argumen 4: Expiry
-)
+def hash_password(password):
+    # Mengubah password menjadi kode acak unik
+    return hashlib.sha256(str.encode(password)).hexdigest()
 
 # --- 2. KONEKSI FIRESTORE ---
 # Di dalam bagian koneksi Firestore app.py
@@ -65,30 +41,56 @@ def save_user_db(email, mapping):
     db.collection("users").document(email).set({"mapping": mapping})
 
 # --- 4. LOGIKA LOGIN ---
-# Cek status login (perbaikan nama fungsi)
-authenticator.check_authentification()
-if not st.session_state.get('connected'):
-    st.title("📝 Ganti Nama Ceklis Sintelis")
-    st.info("Silakan login dengan akun Google kantor Anda untuk melanjutkan.")
-    authenticator.login()
-    st.stop()
+## Inisialisasi status login jika belum ada
+if 'connected' not in st.session_state:
+    st.session_state.connected = False
+
+if not st.session_state.connected:
+    st.title("🔐 Login Ceklis Sintelis")
+    
+    # Input dari user
+    email_input = st.text_input("Email/Username").lower().strip()
+    pass_input = st.text_input("Password", type="password")
+    
+    col1, col2 = st.columns(2)
+    
+    # TOMBOL LOGIN
+    if col1.button("Login", use_container_width=True):
+        # Ambil data password dari koleksi 'credentials' di Firebase
+        user_cred = db.collection("credentials").document(email_input).get()
+        
+        if user_cred.exists:
+            stored_password = user_cred.to_dict().get("password")
+            if hash_password(pass_input) == stored_password:
+                st.session_state.connected = True
+                st.session_state.user_email = email_input
+                st.session_state.user_name = email_input.split("@")[0].upper()
+                st.rerun()
+            else:
+                st.error("Password salah!")
+        else:
+            st.error("User tidak terdaftar!")
+
+    # TOMBOL DAFTAR (Hanya untuk buat akun baru pertama kali)
+    if col2.button("Daftar Akun Baru", use_container_width=True):
+        if email_input and pass_input:
+            db.collection("credentials").document(email_input).set({
+                "password": hash_password(pass_input)
+            })
+            st.success("Akun berhasil dibuat! Silakan klik Login.")
+        else:
+            st.warning("Isi email dan password untuk mendaftar.")
+            
+    st.stop() # Hentikan script di sini jika belum login
 
 # Jika sudah login, ambil info user
-user_info = st.session_state.get('user_info', {})
-if not user_info:
-    st.warning("Sesi berakhir, silakan refresh halaman.")
-    st.stop()
-user_email = user_info.get('email').lower()
-if not user_email:
-    st.error("Gagal mengambil email user. Silakan logout dan login kembali.")
-    if st.button("Logout"):
-        authenticator.logout()
-        st.rerun()
-    st.stop()
+# Ganti bagian pengambilan email lama dengan ini:
+user_email = st.session_state.user_email
+user_name = st.session_state.user_name
 
+# Database lokasi tetap diambil berdasarkan email yang login
 if 'mapping_lokasi' not in st.session_state:
     st.session_state.mapping_lokasi = get_user_db(user_email)
-
 
 # --- 5. CALLBACK DATABASE ---
 def add_location_callback():
@@ -126,8 +128,9 @@ with st.sidebar:
             
     st.divider()
     if st.button("Log Out", use_container_width=True):
-        authenticator.logout()
-        st.rerun()
+    st.session_state.connected = False
+    st.session_state.user_email = None
+    st.rerun()
 
 # --- 7. HALAMAN UTAMA: PROSES FILE ---
 st.title("🚀 Pemroses Nama Ceklis")
