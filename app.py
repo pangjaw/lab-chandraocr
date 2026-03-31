@@ -28,7 +28,7 @@ client_config = {
 # Simpan ke file sementara agar library bisa membacanya
 with open("client_secrets.json", "w") as f:
     json.dump(client_config, f)
-
+st.write("Isi Redirect URI di JSON:", client_config["web"]["redirect_uris"][0])
 # Sekarang panggil Authenticate dengan mengacu pada FILE tersebut
 # Berikan PATH FILE sebagai argumen pertama
 authenticator = Authenticate(
