@@ -12,12 +12,12 @@ from google.oauth2 import service_account
 google_secrets = st.secrets["google_auth"]
 
 authenticator = Authenticate(
-    client_id=google_secrets["client_id"],
-    client_secret=google_secrets["client_secret"],
-    redirect_uri=google_secrets["redirect_uri"],
-    cookie_name=google_secrets["cookie_name"],
-    key=google_secrets["secret_key"], # GUNAKAN 'key', bukan 'secret_key' atau 'cookie_key'
-    cookie_expiry_days=30,
+    google_secrets["client_id"],      # Argumen 1: Client ID
+    google_secrets["client_secret"],  # Argumen 2: Client Secret
+    google_secrets["redirect_uri"],   # Argumen 3: Redirect URI
+    google_secrets["cookie_name"],    # Argumen 4: Cookie Name
+    google_secrets["secret_key"],    # Argumen 5: Key/Secret Key
+    cookie_expiry_days=30             # Argumen 6: Expiry (Keyword)
 )
 
 # Cek status login (perbaikan nama fungsi)
