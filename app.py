@@ -15,8 +15,8 @@ authenticator = Authenticate(
     google_secrets["client_id"],      # Argumen 1: Client ID
     google_secrets["client_secret"],  # Argumen 2: Client Secret
     google_secrets["redirect_uri"],   # Argumen 3: Redirect URI
-    google_secrets["cookie_name"],    # Argumen 4: Cookie Name
-    google_secrets["secret_key"],    # Argumen 5: Key/Secret Key
+    google_secrets["cookie_name"],    # Argumen 4: Nama Cookie
+    google_secrets["secret_key"]      # Argumen 5: Key/Secret Key
 )
 
 # Cek status login (perbaikan nama fungsi)
