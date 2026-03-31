@@ -9,17 +9,18 @@ from google.cloud import firestore
 from google.oauth2 import service_account
 
 # --- 1. KONFIGURASI GOOGLE AUTH ---
+# Baris ini mengambil grup [google_auth] dari TOML
 google_secrets = st.secrets["google_auth"]
 
-# Gunakan struktur baru: parameter dibungkus dalam dictionary
 authenticator = Authenticate(
     auth_config={
+        # Nama di dalam [""] harus sama dengan di TOML
         "client_id": google_secrets["client_id"],
         "client_secret": google_secrets["client_secret"],
         "redirect_uri": google_secrets["redirect_uri"],
     },
-    cookie_name=google_secrets["google_auth_cookie"],
-    cookie_key=google_secrets["KODE_RAHASIA_BEBAS_APA_SAJA_123"], # 'secret_key' sekarang jadi 'cookie_key'
+    cookie_name=google_secrets["cookie_name"],
+    cookie_key=google_secrets["secret_key"], # Di TOML Anda namanya 'secret_key'
     cookie_expiry_days=30,
 )
 
