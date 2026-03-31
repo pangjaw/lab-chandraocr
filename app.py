@@ -9,22 +9,33 @@ from google.cloud import firestore
 from google.oauth2 import service_account
 
 # --- 1. KONFIGURASI GOOGLE AUTH ---
+import json
+
 google_secrets = st.secrets["google_auth"]
 
-# Simpan ke variabel string untuk memastikan Python tidak membacanya sebagai file path
-cid = str(google_secrets["client_id"])
-csec = str(google_secrets["client_secret"])
-ruri = str(google_secrets["redirect_uri"])
-cnam = str(google_secrets["cookie_name"])
-skey = str(google_secrets["secret_key"])
+# Kita buat struktur JSON yang diharapkan oleh library Google
+client_config = {
+    "web": {
+        "client_id": google_secrets["client_id"],
+        "client_secret": google_secrets["client_secret"],
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "redirect_uris": [google_secrets["redirect_uri"]]
+    }
+}
 
-# Masukkan HANYA nilainya saja, SESUAI URUTAN (Tanpa client_id= atau key=)
+# Simpan ke file sementara agar library bisa membacanya
+with open("client_secrets.json", "w") as f:
+    json.dump(client_config, f)
+
+# Sekarang panggil Authenticate dengan mengacu pada FILE tersebut
+# Berikan PATH FILE sebagai argumen pertama
 authenticator = Authenticate(
-    cid,   # Posisi 1: Client ID
-    csec,  # Posisi 2: Client Secret
-    ruri,  # Posisi 3: Redirect URI
-    cnam,  # Posisi 4: Cookie Name
-    skey   # Posisi 5: Key
+    "client_secrets.json",           # Argumen 1: Path ke file JSON
+    google_secrets["cookie_name"],   # Argumen 2: Nama Cookie
+    google_secrets["secret_key"],    # Argumen 3: Key
+    30                               # Argumen 4: Expiry
 )
 
 # --- 2. KONEKSI FIRESTORE ---
