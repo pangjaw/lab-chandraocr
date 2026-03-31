@@ -23,8 +23,14 @@ authenticator = Authenticate(
 authenticator.check_authentification()
 
 # --- 2. KONEKSI FIRESTORE ---
+# Di dalam bagian koneksi Firestore app.py
 if "firebase" in st.secrets:
     key_dict = dict(st.secrets["firebase"])
+    
+    # PERBAIKAN: Mengubah teks \n menjadi baris baru yang asli
+    if "private_key" in key_dict:
+        key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
+    
     creds = service_account.Credentials.from_service_account_info(key_dict)
     db = firestore.Client(credentials=creds, project=key_dict['project_id'])
 else:
