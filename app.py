@@ -66,19 +66,29 @@ def save_user_db(email, mapping):
 
 # --- 4. LOGIKA LOGIN ---
 # Cek status login (perbaikan nama fungsi)
-authenticator.check_authentification()
+authenticator.check_authentication()
 if not st.session_state.get('connected'):
-    st.title("📝 Ceklis Sintelis Pro")
+    st.title("📝 Ganti Nama Ceklis Sintelis")
     st.info("Silakan login dengan akun Google kantor Anda untuk melanjutkan.")
     authenticator.login()
     st.stop()
 
 # Jika sudah login, ambil info user
-user_info = st.session_state.get('user_info')
+user_info = st.session_state.get('user_info', {})
+if not user_info:
+    st.warning("Sesi berakhir, silakan refresh halaman.")
+    st.stop()
 user_email = user_info.get('email').lower()
+if not user_email:
+    st.error("Gagal mengambil email user. Silakan logout dan login kembali.")
+    if st.button("Logout"):
+        authenticator.logout()
+        st.rerun()
+    st.stop()
 
 if 'mapping_lokasi' not in st.session_state:
     st.session_state.mapping_lokasi = get_user_db(user_email)
+
 
 # --- 5. CALLBACK DATABASE ---
 def add_location_callback():
