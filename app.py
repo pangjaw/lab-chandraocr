@@ -11,18 +11,21 @@ from google.oauth2 import service_account
 # --- 1. KONFIGURASI GOOGLE AUTH ---
 google_secrets = st.secrets["google_auth"]
 
-# Masukkan semua data ke dalam satu variabel dictionary
-config = {
-    "client_id": google_secrets["client_id"],
-    "client_secret": google_secrets["client_secret"],
-    "redirect_uri": google_secrets["redirect_uri"],
-    "cookie_name": google_secrets["cookie_name"],
-    "key": google_secrets["secret_key"]
-}
+# Simpan ke variabel string untuk memastikan Python tidak membacanya sebagai file path
+cid = str(google_secrets["client_id"])
+csec = str(google_secrets["client_secret"])
+ruri = str(google_secrets["redirect_uri"])
+cnam = str(google_secrets["cookie_name"])
+skey = str(google_secrets["secret_key"])
 
-# Gunakan tanda bintang dua (**) untuk membongkar isi dictionary-nya
-# Cara ini biasanya bisa melewati bug 'file not found' pada library ini
-authenticator = Authenticate(**config)
+# Masukkan HANYA nilainya saja, SESUAI URUTAN (Tanpa client_id= atau key=)
+authenticator = Authenticate(
+    cid,   # Posisi 1: Client ID
+    csec,  # Posisi 2: Client Secret
+    ruri,  # Posisi 3: Redirect URI
+    cnam,  # Posisi 4: Cookie Name
+    skey   # Posisi 5: Key
+)
 
 # --- 2. KONEKSI FIRESTORE ---
 # Di dalam bagian koneksi Firestore app.py
