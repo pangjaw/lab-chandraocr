@@ -18,8 +18,8 @@ authenticator = Authenticate(
         "client_secret": google_secrets["client_secret"],
         "redirect_uri": google_secrets["redirect_uri"],
     },
-    cookie_name=google_secrets["cookie_name"],
-    cookie_key=google_secrets["secret_key"], # 'secret_key' sekarang jadi 'cookie_key'
+    cookie_name=google_secrets["google_auth_cookie"],
+    cookie_key=google_secrets["KODE_RAHASIA_BEBAS_APA_SAJA_123"], # 'secret_key' sekarang jadi 'cookie_key'
     cookie_expiry_days=30,
 )
 
