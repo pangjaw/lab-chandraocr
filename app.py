@@ -11,13 +11,14 @@ from google.oauth2 import service_account
 # --- 1. KONFIGURASI GOOGLE AUTH ---
 google_secrets = st.secrets["google_auth"]
 
+# Menjadi (sesuai dokumentasi terbaru):
 authenticator = Authenticate(
-    secret_key=google_secrets["secret_key"],
-    cookie_name=google_secrets["cookie_name"],
-    cookie_expiry_days=30,
     client_id=google_secrets["client_id"],
     client_secret=google_secrets["client_secret"],
     redirect_uri=google_secrets["redirect_uri"],
+    cookie_name=google_secrets["cookie_name"],
+    cookie_expiry_days=30,
+    # Hapus atau ganti secret_key jika library tidak lagi membutuhkannya
 )
 
 # Cek status login (perbaikan nama fungsi)
