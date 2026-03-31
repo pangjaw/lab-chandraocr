@@ -66,7 +66,7 @@ def save_user_db(email, mapping):
 
 # --- 4. LOGIKA LOGIN ---
 # Cek status login (perbaikan nama fungsi)
-authenticator.check_authentication()
+authenticator.check_authentification()
 if not st.session_state.get('connected'):
     st.title("📝 Ganti Nama Ceklis Sintelis")
     st.info("Silakan login dengan akun Google kantor Anda untuk melanjutkan.")
