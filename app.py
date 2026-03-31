@@ -19,8 +19,7 @@ authenticator = Authenticate(
     google_secrets["secret_key"]      # Argumen 5: Key/Secret Key
 )
 
-# Cek status login (perbaikan nama fungsi)
-authenticator.check_authentification()
+
 
 # --- 2. KONEKSI FIRESTORE ---
 # Di dalam bagian koneksi Firestore app.py
@@ -49,6 +48,8 @@ def save_user_db(email, mapping):
     db.collection("users").document(email).set({"mapping": mapping})
 
 # --- 4. LOGIKA LOGIN ---
+# Cek status login (perbaikan nama fungsi)
+authenticator.check_authentification()
 if not st.session_state.get('connected'):
     st.title("📝 Ceklis Sintelis Pro")
     st.info("Silakan login dengan akun Google kantor Anda untuk melanjutkan.")
