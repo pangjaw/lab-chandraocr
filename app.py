@@ -5,12 +5,11 @@ import os
 import zipfile
 import platform
 import pytesseract
-import time
 from io import BytesIO
 from pdf2image import convert_from_bytes
 from streamlit_lottie import st_lottie
 
-# --- 1. KONFIGURASI & FUNGSI LOADING ---
+# --- 1. KONFIGURASI TESSERACT ---
 if platform.system() == "Windows":
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
@@ -32,9 +31,9 @@ col1, col2 = st.columns([1, 1], gap="large")
 with col1:
     st.subheader("📁 Input & Setting")
     use_ocr = st.checkbox("Gunakan OCR Otomatis", value=True)
-    uploaded_files = st.file_uploader("Upload PDF", type="pdf", accept_multiple_files=True)
+    uploaded_files = st.file_uploader("Upload PDF Ceklis", type="pdf", accept_multiple_files=True)
 
-# --- 3. PROSES DATA ---
+# --- 3. PROSES DATA BERDASARKAN SYARAT MUTLAK ---
 if uploaded_files:
     zip_buffer = BytesIO()
     processed_files = []
@@ -51,96 +50,94 @@ if uploaded_files:
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for f in uploaded_files:
                 name_only = os.path.splitext(f.name)[0].upper()
+                
+                # SYARAT MUTLAK: Deteksi Tanggal dari Nama File Asli
                 tgl_match = re.search(r'\d{2}-\d{2}-\d{4}', name_only)
                 if not tgl_match: continue
                 tgl = tgl_match.group()
 
                 assets = []
-                found_short = "LOKASI_TIDAK_TERDETEKSI"
+                found_short = "LOKASI"
 
-                # --- LOGIKA 1: CEKLIS PDSE (AMBIL DARI NAMA FILE ASLI) ---
-                if "PERALATAN DALAM PERSINYALAN ELEKTRIK" in name_only:
-                    assets = ["PDSE"]
-                    try:
-                        # Scan khusus untuk mencari Lokasi di halaman Foto Dokumentasi
-                        images = convert_from_bytes(f.getvalue(), dpi=150, last_page=10)
-                        target_page_text = ""
-                        for img in images:
-                            txt = pytesseract.image_to_string(img).upper()
-                            if "FOTO DOKUMENTASI" in txt:
-                                # Ambil teks hanya setelah kata FOTO DOKUMENTASI
-                                target_page_text = txt.split("FOTO DOKUMENTASI")[-1]
-                                break
-                        
-                        # Cari Nama Lokasi Utuh (Contoh: BOGOR, CILEBUT, dsb)
-                        loc_match = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s]{3,20})', target_page_text)
+                try:
+                    # Ambil halaman pertama untuk scanning
+                    images = convert_from_bytes(f.getvalue(), dpi=200, first_page=1, last_page=1)
+                    img_first = images[0]
+                    text_full = pytesseract.image_to_string(img_first).upper()
+
+                    # --- LOGIKA 1: CEKLIS PDSE (LOKASI UTUH) ---
+                    if "PERALATAN DALAM PERSINYALAN ELEKTRIK" in name_only:
+                        assets = ["PDSE"]
+                        # Ambil teks tepat setelah label LOKASI sampai baris baru
+                        loc_match = re.search(r'LOKASI\s*[:\-]?\s*([A-Z]+)', text_full)
                         if loc_match:
-                            found_short = loc_match.group(1).strip().split('\n')[0]
+                            found_short = loc_match.group(1).strip()
+
+                    # --- LOGIKA 2: CEKLIS JPL (PINTU PERLINTASAN) ---
+                    elif "PINTU PERLINTASAN" in name_only:
+                        assets = ["JPL"]
+                        # Ekstraksi Nomor JPL (Contoh: JPL 27)
+                        jpl_num = re.search(r'JPL\s?(?:NO\.?\s?)?(\d+)', text_full)
+                        num = jpl_num.group(1) if jpl_num else ""
+                        
+                        # Ekstraksi Rute (Contoh: BOO-CLT)
+                        route = re.search(r'\b([A-Z]{3,4}\-[A-Z]{3,4})\b', text_full)
+                        if route:
+                            found_short = f"{num} {route.group(1)}"
                         else:
-                            stations = ["BOGOR", "CILEBUT", "BOJONG GEDE", "CITAYAM", "DEPOK", "MANGGARAI", "JAKARTA KOTA"]
-                            for s in stations:
-                                if s in target_page_text:
-                                    found_short = s
-                                    break
-                    except:
-                        pass
+                            loc_match = re.search(r'LOKASI\s*[:\-]?\s*([A-Z]+)', text_full)
+                            loc_raw = loc_match.group(1).strip() if loc_match else "LOKASI"
+                            found_short = f"{num} {loc_raw}".strip()
 
-                # --- LOGIKA 2: CEKLIS UTAMA (AXLE, SINYAL, WESEL) ---
-                elif any(x in name_only for x in ["AXLE", "SINYAL", "WESEL", "COUNTER"]):
-                    try:
-                        images = convert_from_bytes(f.getvalue(), dpi=300)
-                        img = images[0]
-                        width, height = img.size
+                    # --- LOGIKA 3: CEKLIS UNIT LUAR (AXLE, SINYAL, WESEL) ---
+                    elif any(x in name_only for x in ["AXLE", "SINYAL", "WESEL", "COUNTER", "POINT LOCK"]):
+                        # CROP AREA KANAN ATAS (Koordinat Aset)
+                        w, h = img_first.size
+                        img_crop = img_first.crop((w*0.55, h*0.02, w*0.98, h*0.45))
+                        text_crop = pytesseract.image_to_string(img_crop).upper()
+                        
+                        # Regex Kode Aset (W81, ZP112, dll)
+                        code_match = re.search(r'\b(W\d+|ZP\d+|AXC\d+|B\d+|[A-Z]\d+)\b', text_crop)
+                        asset_code = code_match.group(1) if code_match else "ASET"
+                        
+                        if "POINT LOCK" in name_only:
+                            assets = [f"POINT LOCK {asset_code}"]
+                        elif "SINYAL" in name_only:
+                            assets = [f"SINYAL {asset_code}"]
+                        else:
+                            assets = [asset_code]
+                        
+                        # Singkatan Lokasi 3 Huruf
+                        loc_list = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB|BTT|CLT)\b', text_full)
+                        found_short = loc_list[0] if loc_list else "LOKASI"
 
-                        if use_ocr:
-                            # Pakai Script Lama (Crop Area Aset)
-                            left, top, right, bottom = width*0.55, height*0.05, width*0.98, height*0.55
-                            img_cropped = img.crop((left, top, right, bottom))
-                            text_aset = pytesseract.image_to_string(img_cropped)
-                            match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_aset, re.IGNORECASE)
-                            
-                            if match_aset:
-                                cleaned = [a.upper().replace(".", "").replace(" ", "") for a in match_aset]
-                                for item in cleaned:
-                                    if item not in assets: assets.append(item)
-                                assets = assets[:5]
-
-                            # Lokasi Singkatan (BOO, MRI, dll)
-                            full_text = pytesseract.image_to_string(img).upper()
-                            loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', full_text)
-                            loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB)\b', full_text)
-
-                            if loc_pair: found_short = loc_pair.group().upper()
-                            elif loc_single: found_short = loc_single[0]
-                            elif "BOGOR" in full_text: found_short = "BOO"
-                    except:
-                        continue
-                    
-                    if not assets:
-                        assets = [p for p in name_only.split("_") if any(c.isdigit() for c in p)][:1]
+                except:
+                    assets = ["ASET"]
+                    found_short = "LOKASI"
 
                 # --- PENAMAAN FINAL ---
-                if assets:
-                    for asset in assets:
-                        new_name = f"PERAWATAN {asset} {found_short} {tgl}.pdf"
-                        zip_f.writestr(new_name, f.getvalue())
-                        processed_files.append(new_name)
+                for asset in assets:
+                    new_name = f"PERAWATAN {asset} {found_short} {tgl}.pdf"
+                    # Bersihkan karakter terlarang Windows
+                    new_name = re.sub(r'[\\/*?:"<>|]', "", new_name)
+                    zip_f.writestr(new_name, f.getvalue())
+                    processed_files.append(new_name)
 
         placeholder.empty()
 
         if processed_files:
-            with st.container(height=250):
+            with st.container(height=300):
                 for p_file in processed_files:
                     st.write(f"✅ `{p_file}`")
             
             st.download_button(
-                label="📥 DOWNLOAD HASIL (.ZIP)",
+                label="📥 DOWNLOAD SEMUA HASIL (.ZIP)",
                 data=zip_buffer.getvalue(),
-                file_name="Hasil_Rename_Sintelis.zip",
+                file_name="Hasil_Rename_Sintelis_Update.zip",
                 mime="application/zip",
                 use_container_width=True,
                 type="primary"
             )
 
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis KAI Utility</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis KAI Utility v2.3</div>", unsafe_allow_html=True)
