@@ -130,54 +130,64 @@ with st.sidebar:
 
     # --- KONDISI MENU 1: KELOLA LOKASI ---
     if menu_pilihan == "📍 Kelola Lokasi":
-        st.subheader("1. Tambah ke Antrean")
-        # Form ini hanya untuk menambah ke daftar sementara di layar
-        with st.form("form_antrean", clear_on_submit=True):
-            l_input = st.text_input("Nama Lokasi").upper().strip()
-            s_input = st.text_input("Singkatan").upper().strip()
-            tambah_antrean = st.form_submit_button("➕ Masukkan ke Daftar", use_container_width=True)
-            
-            if tambah_antrean:
-                if l_input and s_input:
-                    # Masukkan ke list sementara
-                    st.session_state.antrean_lokasi.append({"Lokasi": l_input, "Singkatan": s_input})
-                    st.toast(f"Ditambahkan ke daftar: {l_input}")
-                else:
-                    st.error("Isi kedua kolom!")
-
-        # Tampilkan Antrean Jika Ada
-        if st.session_state.antrean_lokasi:
-            st.write("---")
-            st.subheader("2. Daftar Antrean")
-            df_antrean = pd.DataFrame(st.session_state.antrean_lokasi)
-            st.table(df_antrean)
-            
-            col_a, col_b = st.columns(2)
-            if col_a.button("🗑️ Kosongkan", use_container_width=True):
-                st.session_state.antrean_lokasi = []
-                st.rerun()
+        st.subheader("🚀 Bulk Input (Input Banyak Sekaligus)")
+        
+        st.info("""
+        Format: **NAMA LOKASI,SINGKATAN**
+        Gunakan baris baru untuk data berikutnya.
+        Contoh:
+        BOGOR,BOO
+        DEPOK,DP
+        CITAYAM,CTA
+        """)
+        
+        # Kotak besar untuk paste banyak data
+        bulk_data = st.text_area("Paste data di sini:", height=200, placeholder="BOGOR,BOO\nDEPOK,DP")
+        
+        col_bulk1, col_bulk2 = st.columns(2)
+        
+        if col_bulk1.button("🧐 Pratinjau Data", use_container_width=True):
+            if bulk_data:
+                lines = bulk_data.strip().split('\n')
+                preview_list = []
+                for line in lines:
+                    if ',' in line:
+                        k, v = line.split(',', 1)
+                        preview_list.append({"Lokasi": k.strip().upper(), "Singkatan": v.strip().upper()})
                 
-            if col_b.button("💾 SIMPAN SEMUA", type="primary", use_container_width=True):
-                # Proses pindahkan dari antrean ke database utama
-                for item in st.session_state.antrean_lokasi:
+                if preview_list:
+                    st.write("Data yang terdeteksi:")
+                    st.table(pd.DataFrame(preview_list))
+                    st.session_state.temp_bulk = preview_list
+                else:
+                    st.error("Format salah! Gunakan koma (,) sebagai pemisah.")
+            else:
+                st.warning("Kotak input masih kosong!")
+
+        if col_bulk2.button("💾 SIMPAN SEMUA", type="primary", use_container_width=True):
+            if 'temp_bulk' in st.session_state and st.session_state.temp_bulk:
+                # Masukkan semua dari pratinjau ke database utama
+                for item in st.session_state.temp_bulk:
                     st.session_state.mapping_lokasi[item["Lokasi"]] = item["Singkatan"]
                 
                 # Simpan permanen ke Firebase
                 db.collection("users").document(user_email).set({"mapping": st.session_state.mapping_lokasi})
                 
-                # Bersihkan antrean
-                st.session_state.antrean_lokasi = []
-                st.success("Semua data berhasil masuk database!")
+                # Bersihkan memory sementara
+                st.session_state.temp_bulk = []
+                st.success(f"Berhasil menyimpan {len(lines)} data baru!")
                 st.rerun()
+            else:
+                st.error("Klik 'Pratinjau Data' dulu sebelum simpan!")
 
         st.write("---")
-        st.subheader("3. Database Saat Ini")
+        st.subheader("📊 Database Saat Ini")
         if st.session_state.mapping_lokasi:
-            df_view = pd.DataFrame([{"Lokasi": k, "Singkatan": v} for k, v in st.session_state.mapping_lokasi.items()])
-            st.table(df_view)
+            df_now = pd.DataFrame([{"Lokasi": k, "Singkatan": v} for k, v in st.session_state.mapping_lokasi.items()])
+            st.table(df_now)
             
-            # Fitur Hapus (Opsional tetap ada di bawah)
-            with st.expander("Fitur Hapus"):
+            # Fitur Hapus Satuan
+            with st.expander("Hapus Lokasi"):
                 target = st.selectbox("Pilih lokasi:", ["-- Pilih --"] + list(st.session_state.mapping_lokasi.keys()))
                 if st.button("Hapus Permanen") and target != "-- Pilih --":
                     del st.session_state.mapping_lokasi[target]
