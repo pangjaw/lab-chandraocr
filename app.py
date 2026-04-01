@@ -114,75 +114,91 @@ import pandas as pd
 with st.sidebar:
     st.write(f"Halo, **{user_name}**")
     st.write(f"📧 {user_email}")
-    
     st.divider()
-    st.header("📍 Kelola Lokasi")
-    
-    # 1. Konversi dictionary ke DataFrame untuk ditampilkan di tabel
-    current_data = []
-    for k, v in st.session_state.mapping_lokasi.items():
-        current_data.append({"Lokasi": k, "Singkatan": v})
-    
-    # Jika database kosong, buatkan 1 baris kosong sebagai awalan
-    if not current_data:
-        current_data = [{"Lokasi": "", "Singkatan": ""}]
-    
-    df = pd.DataFrame(current_data)
 
-    # 2. Tampilkan Tabel Editor
-    st.write("Edit atau tambah baris di bawah:")
-    edited_df = st.data_editor(
-        df,
-        column_config={
-            "Lokasi": st.column_config.TextColumn("Nama Lokasi", help="Contoh: BOGOR", width="medium"),
-            "Singkatan": st.column_config.TextColumn("Singkatan", help="Contoh: BOO", width="small"),
-        },
-        num_rows="dynamic", # Memungkinkan user tambah/hapus baris sendiri (tombol +)
-        use_container_width=True,
-        key="editor_lokasi"
+    # --- MENU NAVIGASI SIDEBAR ---
+    menu_pilihan = st.radio(
+        "Pilih Menu:",
+        ["📍 Kelola Tabel Lokasi", "📦 Backup & Restore", "🚪 Logout"]
     )
 
-    # 3. Tombol Simpan Perubahan
-    if st.button("💾 Simpan Perubahan Tabel", use_container_width=True):
-        new_mapping = save_bulk_user_db(user_email, edited_df)
-        st.session_state.mapping_lokasi = new_mapping
-        st.toast("Database Lokasi diperbarui!", icon="✅")
-        st.rerun()
-
     st.divider()
-    # ... (Tambahkan fitur Export/Import atau Logout di bawah sini)
 
-    # --- FITUR EXPORT ---
-    # Mengubah dictionary ke string JSON
-    db_json = json.dumps(st.session_state.mapping_lokasi, indent=4)
-    st.download_button(
-        label="Export Database (.json)",
-        data=db_json,
-        file_name=f"backup_lokasi_{user_name}.json",
-        mime="application/json",
-        use_container_width=True
-    )
+    # --- KONDISI MENU 1: KELOLA TABEL ---
+    if menu_pilihan == "📍 Kelola Tabel Lokasi":
+        st.subheader("Edit Database Lokasi")
+        
+        # Ambil data dari session state
+        current_data = [{"Lokasi": k, "Singkatan": v} for k, v in st.session_state.mapping_lokasi.items()]
+        if not current_data:
+            current_data = [{"Lokasi": "", "Singkatan": ""}]
+        
+        df = pd.DataFrame(current_data)
 
-    # --- FITUR IMPORT ---
-    uploaded_db = st.file_uploader("Import Database", type="json")
-    if uploaded_db is not None:
-        try:
-            import_data = json.load(uploaded_db)
-            # Validasi sederhana apakah formatnya dictionary
-            if isinstance(import_data, dict):
-                st.session_state.mapping_lokasi = import_user_db(user_email, import_data)
-                st.success("Database berhasil diperbarui!")
-                st.rerun()
-            else:
-                st.error("Format JSON tidak valid!")
-        except Exception as e:
-            st.error(f"Gagal import: {e}")
+        # Tabel Editor dengan baris dinamis (+)
+        edited_df = st.data_editor(
+            df,
+            column_config={
+                "Lokasi": st.column_config.TextColumn("Nama Lokasi", width="medium"),
+                "Singkatan": st.column_config.TextColumn("Singkatan", width="small"),
+            },
+            num_rows="dynamic",
+            use_container_width=True,
+            key="editor_tabel"
+        )
 
-    st.divider()
-    if st.button("Log Out", use_container_width=True):
-        st.session_state.connected = False
-        st.session_state.user_email = None
-        st.rerun()
+        if st.button("💾 Simpan Perubahan", use_container_width=True):
+            # Proses simpan (Logika Bulk Save)
+            new_dict = dict(zip(edited_df['Lokasi'], edited_df['Singkatan']))
+            clean_dict = {k.strip().upper(): v.strip().upper() for k, v in new_dict.items() if k and v}
+            
+            # Simpan ke Firebase
+            db.collection("users").document(user_email).set({"mapping": clean_dict})
+            st.session_state.mapping_lokasi = clean_dict
+            st.success("Database berhasil disimpan!")
+            st.rerun()
+
+    # --- KONDISI MENU 2: BACKUP & RESTORE ---
+    elif menu_pilihan == "📦 Backup & Restore":
+        st.subheader("Export/Import JSON")
+        
+        # Fitur Export
+        db_json = json.dumps(st.session_state.mapping_lokasi, indent=4)
+        st.download_button(
+            label="📥 Download Backup (.json)",
+            data=db_json,
+            file_name=f"backup_lokasi_{user_name}.json",
+            mime="application/json",
+            use_container_width=True
+        )
+
+        st.divider()
+
+        # Fitur Import
+        st.write("Upload file backup untuk menambah data:")
+        uploaded_db = st.file_uploader("Pilih file .json", type="json")
+        if uploaded_db:
+            try:
+                import_data = json.load(uploaded_db)
+                if isinstance(import_data, dict):
+                    # Gabungkan data lama dan baru
+                    st.session_state.mapping_lokasi.update(import_data)
+                    # Simpan permanen ke Firebase
+                    db.collection("users").document(user_email).set({"mapping": st.session_state.mapping_lokasi})
+                    st.success("Data berhasil di-import!")
+                    st.rerun()
+                else:
+                    st.error("Format file salah!")
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    # --- KONDISI MENU 3: LOGOUT ---
+    elif menu_pilihan == "🚪 Logout":
+        st.warning("Apakah Anda yakin ingin keluar?")
+        if st.button("Ya, Log Out Sekarang", use_container_width=True):
+            st.session_state.connected = False
+            st.session_state.user_email = None
+            st.rerun()
 
 # --- 7. HALAMAN UTAMA: PROSES FILE ---
 st.title("🚀 Pemroses Nama Ceklis")
