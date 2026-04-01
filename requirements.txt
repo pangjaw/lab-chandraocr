@@ -2,3 +2,10 @@ streamlit
 google-cloud-firestore
 streamlit-google-auth==1.1.8
 pandas
+streamlit
+pandas
+google-cloud-firestore
+google-auth
+pytesseract
+pdf2image
+Pillow
