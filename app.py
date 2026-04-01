@@ -144,40 +144,51 @@ if uploaded_files:
                 continue
 
             # 3. Cari Aset (OCR atau Nama File)
-            # --- LOGIKA OCR UNTUK ASET & LOKASI ---
-            # --- LOGIKA OCR UNTUK ASET & LOKASI ---
+        
+            # --- LOGIKA OCR FOKUS AREA ---
             assets = []
             found_short = None
             
             if use_ocr:
                 try:
+                    # Ambil halaman pertama dengan DPI tinggi
                     images = convert_from_bytes(f.getvalue(), dpi=300)
-                    raw_text = pytesseract.image_to_string(images[0])
+                    img = images[0]
+                    width, height = img.size
 
-                    # 1. CARI SEMUA KODE ASET (B, W, ZP, UB, dll)
+                    # --- STRATEGI CROP (Hanya ambil area kanan atas) ---
+                    # Kita potong gambar: Ambil 50% lebar kanan, dan 40% tinggi atas
+                    # Area ini adalah tempat daftar aset ZP/B/W biasanya berada
+                    left = width * 0.45  # Mulai dari hampir tengah ke kanan
+                    top = height * 0.15   # Mulai sedikit di bawah margin atas
+                    right = width * 0.95 # Sampai pinggir kanan
+                    bottom = height * 0.5 # Hanya sampai setengah halaman (hindari tabel bawah)
+                    
+                    img_cropped = img.crop((left, top, right, bottom))
+                    
+                    # Jalankan OCR hanya pada potongan gambar tersebut
+                    raw_text = pytesseract.image_to_string(img_cropped)
+
+                    # 1. AMBIL NOMOR ASET (B, W, ZP, UB, dll)
                     ocr_match = re.findall(r'\b([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)\b', raw_text, re.IGNORECASE)
                     
                     if ocr_match:
-                        # Membersihkan format (Hapus titik & spasi)
                         cleaned_list = [a.upper().replace(".", "").replace(" ", "") for a in ocr_match]
-                        
-                        # Hapus Duplikat tanpa merusak urutan
                         unique_assets = []
                         for item in cleaned_list:
                             if item not in unique_assets:
                                 unique_assets.append(item)
-                        
-                        # --- DI SINI LIMITNYA: HANYA AMBIL 5 TERATAS ---
-                        assets = unique_assets[:5] 
+                        assets = unique_assets[:5]
 
-                    # 2. CARI LOKASI (CLT-BOO)
-                    loc_match = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', raw_text)
+                    # 2. AMBIL LOKASI (CLT-BOO)
+                    # Kita scan seluruh halaman untuk lokasi karena letaknya bisa bervariasi
+                    full_text = pytesseract.image_to_string(img)
+                    loc_match = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', full_text)
                     if loc_match:
                         found_short = loc_match.group().upper()
                         
                 except Exception as e:
                     st.error(f"OCR Error: {e}")
-                    
 
             # 4. Input Manual Jika Benar-benar Tidak Ketemu
             if not assets:
