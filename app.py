@@ -166,19 +166,28 @@ with st.sidebar:
 
         if col_bulk2.button("💾 SIMPAN SEMUA", type="primary", use_container_width=True):
             if 'temp_bulk' in st.session_state and st.session_state.temp_bulk:
-                # Masukkan semua dari pratinjau ke database utama
-                for item in st.session_state.temp_bulk:
+                # Ambil data dari memori pratinjau
+                data_siap_simpan = st.session_state.temp_bulk
+                
+                # Masukkan semua ke database utama (mapping_lokasi)
+                for item in data_siap_simpan:
                     st.session_state.mapping_lokasi[item["Lokasi"]] = item["Singkatan"]
                 
                 # Simpan permanen ke Firebase
-                db.collection("users").document(user_email).set({"mapping": st.session_state.mapping_lokasi})
+                db.collection("users").document(user_email).set({
+                    "mapping": st.session_state.mapping_lokasi
+                })
                 
-                # Bersihkan memory sementara
+                # Hitung jumlah untuk pesan sukses
+                jumlah = len(data_siap_simpan)
+                
+                # Bersihkan memory sementara agar tidak dobel simpan
                 st.session_state.temp_bulk = []
-                st.success(f"Berhasil menyimpan {len(lines)} data baru!")
+                
+                st.success(f"Berhasil menyimpan {jumlah} data baru!")
                 st.rerun()
             else:
-                st.error("Klik 'Pratinjau Data' dulu sebelum simpan!")
+                st.error("Klik 'Pratinjau Data' dulu untuk memproses teks sebelum simpan!")
 
         st.write("---")
         st.subheader("📊 Database Saat Ini")
