@@ -21,8 +21,8 @@ uploaded_files = st.file_uploader("Upload PDF (Bisa banyak sekaligus)", type="pd
 
 if uploaded_files:
     zip_buffer = BytesIO()
+    processed_files = [] # List untuk menampung log file yang berhasil
     
-    # Proses file langsung untuk efisiensi
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
         for f in uploaded_files:
             name_only = os.path.splitext(f.name)[0]
@@ -38,34 +38,28 @@ if uploaded_files:
             found_short = "LOKASI_TIDAK_TERDETEKSI"
             
             try:
-                # 2. Proses Gambar untuk OCR (DPI 300 untuk akurasi KAI)
+                # 2. Proses Gambar untuk OCR
                 images = convert_from_bytes(f.getvalue(), dpi=300)
                 img = images[0]
                 width, height = img.size
 
                 if use_ocr:
-                    # A. DETEKSI ASET (Fokus area kanan atas untuk menghindari No. Seri/WSL)
+                    # A. DETEKSI ASET (Fokus area kanan atas)
                     left, top, right, bottom = width*0.55, height*0.05, width*0.98, height*0.55
                     img_cropped = img.crop((left, top, right, bottom))
                     text_aset = pytesseract.image_to_string(img_cropped)
                     
-                    # Regex mencari kode aset setelah kata kunci khusus
                     match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_aset, re.IGNORECASE)
                     
                     if match_aset:
-                        # Bersihkan format: Uppercase, Hapus Titik (B.112 -> B112), Hapus Spasi
                         cleaned = [a.upper().replace(".", "").replace(" ", "") for a in match_aset]
-                        # Hapus duplikat & Limit 5 aset pertama
                         for item in cleaned:
                             if item not in assets: assets.append(item)
                         assets = assets[:5]
 
-                    # B. DETEKSI LOKASI (Scan Seluruh Halaman)
+                    # B. DETEKSI LOKASI
                     full_text = pytesseract.image_to_string(img).upper()
-                    
-                    # Pola 1: Singkatan Berpasangan (Contoh: CLT-BOO)
                     loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', full_text)
-                    # Pola 2: Singkatan Tunggal Stasiun Umum
                     loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB)\b', full_text)
 
                     if loc_pair: 
@@ -79,18 +73,25 @@ if uploaded_files:
                 st.error(f"Gagal memproses {f.name}: {e}")
                 continue
 
-            # 3. Fallback jika OCR tidak menemukan aset
+            # 3. Fallback & Penamaan
             if not assets:
-                # Ambil potongan angka/kode dari nama file asli sebagai cadangan
                 assets = [p for p in name_only.upper().split("_") if any(c.isdigit() for c in p)][:1]
             
             if assets:
                 for asset in assets:
                     new_name = f"PERAWATAN {asset} {found_short} {tgl}.pdf"
                     zip_f.writestr(new_name, f.getvalue())
-                    st.write(f"✅ Berhasil diproses: `{new_name}`")
+                    processed_files.append(new_name)
 
-    # --- 3. TOMBOL DOWNLOAD OTOMATIS ---
+    # --- 3. DISPLAY LOG (SCROLLABLE) ---
+    if processed_files:
+        st.write("### 📋 Log Hasil Proses:")
+        # Menggunakan st.container dengan height membuat area menjadi scrollable otomatis
+        with st.container(height=250):
+            for p_file in processed_files:
+                st.write(f"✅ `{p_file}`")
+
+    # --- 4. TOMBOL DOWNLOAD OTOMATIS ---
     st.divider()
     if zip_buffer.getbuffer().nbytes > 0:
         st.download_button(
@@ -102,7 +103,7 @@ if uploaded_files:
             type="primary"
         )
 
-# --- 4. FOOTER KREDIT ---
+# --- 5. FOOTER KREDIT ---
 st.markdown("---")
 st.markdown(
     """
