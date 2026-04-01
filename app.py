@@ -57,8 +57,14 @@ if uploaded_files:
                     images = convert_from_bytes(f.getvalue(), dpi=200, last_page=5)
                     text_h1 = pytesseract.image_to_string(images[0]).upper()
                     
-                    # --- A. LOGIKA KHUSUS SERAT OPTIK ---
-                    if "SERAT OPTIK" in name_only:
+                    # --- 1. LOGIKA PDSE (HARUS KAKU) ---
+                    if "PERALATAN DALAM PERSINYALAN ELEKTRIK" in name_only:
+                        final_asset = "PDSE"
+                        loc_match = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s\-]{3,30})', text_h1)
+                        if loc_match: final_loc = loc_match.group(1).strip().split('\n')[0]
+
+                    # --- 2. LOGIKA SERAT OPTIK ---
+                    elif "SERAT OPTIK" in name_only:
                         final_asset = "SERAT OPTIK"
                         otb_match = re.search(r'(OTB\s?FO|OTB)\s?(.+)', text_h1)
                         if otb_match:
@@ -66,50 +72,62 @@ if uploaded_files:
                         else:
                             final_loc = "OTB_UNKNOWN"
 
-                    # --- B. LOGIKA KHUSUS PTLS & PTDS ---
+                    # --- 3. LOGIKA PTLS & PTDS ---
                     elif "TELEKOMUNIKASI" in name_only:
                         final_asset = "PTLS" if "LUAR STASIUN" in name_only else "PTDS"
                         loc_match = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s\-]{3,30})', text_h1)
                         if loc_match: final_loc = loc_match.group(1).strip().split('\n')[0]
 
-                    # --- C. LOGIKA KHUSUS JPL ---
+                    # --- 4. LOGIKA JPL ---
                     elif "PINTU PERLINTASAN" in name_only:
                         final_asset = "JPL"
-                        jpl_num = re.search(r'JPL\s?(\d+)', text_h1)
+                        # Cari No JPL di isi file
+                        jpl_num = re.search(r'JPL\s?NO\.?\s?(\d+)', text_h1)
+                        if not jpl_num: jpl_num = re.search(r'JPL\s?(\d+)', text_h1)
+                        
                         jpl_loc = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s\-]{3,30})', text_h1)
                         num = jpl_num.group(1) if jpl_num else ""
                         loc = jpl_loc.group(1).strip().split('\n')[0] if jpl_loc else ""
                         final_loc = f"{num} {loc}".strip()
 
-                    # --- D. LOGIKA CATU DAYA & CTC-CTS ---
+                    # --- 5. LOGIKA CATU DAYA & CTC-CTS ---
                     elif any(x in name_only for x in ["CATU DAYA", "CTC-CTS"]):
                         final_asset = "CATU DAYA" if "CATU DAYA" in name_only else "CTC-CTS"
                         loc_match = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s\-]{3,30})', text_h1)
                         if loc_match: final_loc = loc_match.group(1).strip().split('\n')[0]
 
-                    # --- E. LOGIKA UTAMA (WESEL, SINYAL, AXLE, POINT LOCK) ---
+                    # --- 6. LOGIKA UTAMA (WESEL, SINYAL, AXLE, POINT LOCK) ---
                     else:
                         is_point_lock = "POINT LOCK" in name_only
-                        final_asset = "POINT LOCK" if is_point_lock else ""
                         
-                        # OCR Crop untuk Aset (Wesel/Sinyal/Axle)
+                        # OCR Crop untuk Aset
                         width, height = images[0].size
                         img_cropped = images[0].crop((width*0.55, height*0.05, width*0.98, height*0.55))
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         
-                        asset_match = re.findall(r'(?:WESEL|SINYAL|COUNTER|W)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_crop)
+                        # Regex diperkuat untuk menangkap kode meski tanpa kata WESEL/SINYAL di area crop
+                        asset_match = re.findall(r'(?:WESEL|SINYAL|COUNTER|W|ZP|AXC|B|J|M|W)\.?\s?([A-Z\d]+[A-Z]?)', text_crop)
+                        
                         if asset_match:
                             asset_code = asset_match[0].replace(".", "").replace(" ", "")
+                            # Jika Point Lock, format: PERAWATAN POINT LOCK [KODE]
                             final_asset = f"POINT LOCK {asset_code}" if is_point_lock else asset_code
+                        else:
+                            # Jika OCR gagal, ambil dari nama file asli (cari pola kode seperti W31, ZP112)
+                            fallback_asset = re.search(r'(?:W|ZP|AXC|B|J|M)\d+[A-Z]?', name_only)
+                            if fallback_asset:
+                                asset_code = fallback_asset.group()
+                                final_asset = f"POINT LOCK {asset_code}" if is_point_lock else asset_code
+                            else:
+                                final_asset = "POINT LOCK" if is_point_lock else "ASET_TIDAK_DIKENAL"
                         
-                        # Lokasi Singkatan (BOO, CLT, dll)
+                        # Lokasi Singkatan
                         loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB|BTT|CLT)\b', text_h1)
                         if loc_single: final_loc = loc_single[0]
 
                 except: pass
 
-                # Failsafe Nama
-                if not final_asset: final_asset = "ASET"
+                # Gabungkan Nama
                 new_name = f"PERAWATAN {final_asset} {final_loc} {tgl}.pdf"
                 zip_f.writestr(new_name, f.getvalue())
                 processed_files.append(new_name)
@@ -118,7 +136,7 @@ if uploaded_files:
         if processed_files:
             with st.container(height=300):
                 for p_file in processed_files: st.write(f"✅ `{p_file}`")
-            st.download_button("📥 DOWNLOAD HASIL (.ZIP)", zip_buffer.getvalue(), "Hasil_Sintelis_Update.zip", "application/zip", use_container_width=True, type="primary")
+            st.download_button("📥 DOWNLOAD HASIL (.ZIP)", zip_buffer.getvalue(), "Hasil_Update_Sintelis.zip", "application/zip", use_container_width=True, type="primary")
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis KAI Utility</div>", unsafe_allow_html=True)
