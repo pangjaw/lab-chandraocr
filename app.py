@@ -144,7 +144,8 @@ if uploaded_files:
                 continue
 
             # 3. Cari Aset (OCR atau Nama File)
-        
+            # --- LOGIKA OCR UNTUK ASET & LOKASI ---
+            # --- LOGIKA OCR UNTUK ASET & LOKASI ---
             # --- LOGIKA OCR FOKUS AREA ---
             assets = []
             found_short = None
@@ -156,15 +157,18 @@ if uploaded_files:
                     img = images[0]
                     width, height = img.size
 
-                    # --- STRATEGI CROP (Hanya ambil area kanan atas) ---
-                    # Kita potong gambar: Ambil 50% lebar kanan, dan 40% tinggi atas
-                    # Area ini adalah tempat daftar aset ZP/B/W biasanya berada
-                    left = width * 0.45  # Mulai dari hampir tengah ke kanan
-                    top = height * 0.15   # Mulai sedikit di bawah margin atas
-                    right = width * 0.95 # Sampai pinggir kanan
-                    bottom = height * 0.5 # Hanya sampai setengah halaman (hindari tabel bawah)
+                    # --- STRATEGI CROP VERSI LONGGAR ---
+                    # Kita ambil area dari tengah ke kanan (40% ke kanan)
+                    # Dan dari paling atas sampai 60% tinggi halaman
+                    left = width * 0.40   # Lebih ke kiri dikit biar aman
+                    top = 0               # Dari paling atas kertas
+                    right = width         # Sampai mentok kanan
+                    bottom = height * 0.6 # Sampai lewat tengah halaman
                     
                     img_cropped = img.crop((left, top, right, bottom))
+                    
+                    # Cek hasil crop di Streamlit (Hapus baris ini jika sudah lancar)
+                    # st.image(img_cropped, caption="Area yang di-scan OCR")
                     
                     # Jalankan OCR hanya pada potongan gambar tersebut
                     raw_text = pytesseract.image_to_string(img_cropped)
