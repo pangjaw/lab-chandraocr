@@ -22,7 +22,7 @@ def load_lottiefile(filepath: str):
         return None
 
 # NAMA JSON: metro rail.json
-lottie_train = load_lottiefile("metro rail.json")
+lottie_train = load_lottiefile("Metro Rail.json")
 
 # --- 2. TAMPILAN UTAMA ---
 st.set_page_config(page_title="Ganti Nama File Ceklis Sintelis", page_icon="📑", layout="wide")
@@ -97,17 +97,21 @@ if uploaded_files:
                         if loc_pair: final_location = loc_pair.group()
                         elif loc_single: final_location = loc_single[0]
 
-                    # --- LOGIKA ASET ---
-                    # Ambil kode unik dari nama file asli (misal: 201AT, 24CT)
-                    file_code = [p for p in name_only.upper().split("_") if any(c.isdigit() for c in p)]
+                    # --- LOGIKA ASET (DIPERBAIKI) ---
+                    # 1. Bersihkan dulu tanggal dari nama file agar tidak dianggap sebagai Aset
+                    name_cleaned = re.sub(r'\d{2}-\d{2}-\d{4}', '', name_only)
+                    
+                    # 2. Ambil potongan nama yang tersisa yang mengandung angka (seperti 201AT, 24CT, dsb)
+                    # Kita pecah berdasarkan underscore (_) atau spasi
+                    parts = re.split(r'[_\s]+', name_cleaned.upper())
+                    file_code = [p.strip() for p in parts if any(c.isdigit() for c in p) and len(p) > 2]
+
                     if is_persinyalan_elektrik and file_code:
                         asset_name = file_code[0]
                     else:
+                        # Untuk ceklis biasa, cari keyword WESEL/SINYAL/BLOK
                         match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_h1, re.IGNORECASE)
                         asset_name = match_aset[0].upper().replace(".", "").replace(" ", "") if match_aset else "ASET"
-
-                except:
-                    continue
 
                 # --- FORMAT HARUS SELALU: PERAWATAN [ASET] [LOKASI] [TANGGAL] ---
                 new_name = f"PERAWATAN {asset_name} {final_location} {tgl}.pdf"
