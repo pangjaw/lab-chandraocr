@@ -131,17 +131,25 @@ if uploaded_files:
                 continue
             tgl = tgl_match.group()
             
-            # 2. Cari Lokasi (Anti-Spasi)
-            found_short = None
-            name_clean = name_only.upper().replace(" ", "")
-            for k, v in st.session_state.mapping_lokasi.items():
-                if k.replace(" ", "") in name_clean or v.replace(" ", "") in name_clean:
-                    found_short = v
-                    break
+           # --- 2. AMBIL LOKASI OTOMATIS (Tanpa Database) ---
+            full_text = pytesseract.image_to_string(img).upper()
             
-            if not found_short:
-                st.error(f"❌ {f.name}: Lokasi tidak terdaftar di database!")
-                continue
+            # Strategi A: Cari pola singkatan berpasangan (Contoh: CLT-BOO, BOO-CIT)
+            loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', full_text)
+            
+            # Strategi B: Cari singkatan tunggal di akhir baris aset (Contoh: W31A BOO)
+            # Kita cari 3 huruf kapital yang berdiri sendiri di baris yang sama dengan aset
+            loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD)\b', full_text)
+
+            if loc_pair:
+                found_short = loc_pair.group().upper()
+            elif loc_single:
+                # Ambil singkatan pertama yang ditemukan (misal: BOO)
+                found_short = loc_single[0]
+            else:
+                # Strategi C: Jika tetap tidak ketemu, ambil kata terakhir dari baris aset
+                # Ini sebagai pengaman terakhir
+                found_short = "LOKASI_TIDAK_TERDETEKSI"
 
             # 3. Cari Aset (OCR atau Nama File)
             # --- LOGIKA OCR UNTUK ASET & LOKASI ---
