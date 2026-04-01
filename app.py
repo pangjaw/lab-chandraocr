@@ -21,7 +21,7 @@ def load_lottiefile(filepath: str):
     except:
         return None
 
-# NAMA JSON: Metro Rail.json (Pastikan file fisiknya bernama sama)
+# NAMA JSON: Metro Rail.json
 lottie_train = load_lottiefile("Metro Rail.json")
 
 # --- 2. TAMPILAN UTAMA ---
@@ -47,28 +47,30 @@ if uploaded_files:
         with placeholder.container():
             if lottie_train:
                 st_lottie(lottie_train, height=150, key="train_loader")
-            st.info("🚂 Sedang menyisir data lokasi di halaman Foto Dokumentasi...")
+            st.info("🚂 Sedang mengambil data Aset & Lokasi dari Foto Dokumentasi...")
 
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for f in uploaded_files:
                 name_only = os.path.splitext(f.name)[0]
                 
-                # Ambil Tanggal Asli (DD-MM-YYYY)
+                # Ambil Tanggal dari nama file asli (DD-MM-YYYY)
                 tgl_match = re.search(r'\d{2}-\d{2}-\d{4}', name_only)
                 tgl = tgl_match.group() if tgl_match else "00-00-0000"
 
                 final_location = "LOKASI_TIDAK_TERDETEKSI"
                 asset_name = "ASET"
+                is_persinyalan_elektrik = False
                 
                 try:
-                    # Convert PDF ke gambar (Max 10 hal agar cepat)
+                    # Convert halaman (limit 10 halaman)
                     images = convert_from_bytes(f.getvalue(), dpi=150, last_page=10)
                     
                     target_page_text = ""
                     text_h1 = pytesseract.image_to_string(images[0]).upper()
                     
-                    # CEK APAKAH INI FILE PERSINYALAN ELEKTRIK
-                    is_persinyalan_elektrik = "PERALATAN DALAM PERSINYALAN ELEKTRIK" in text_h1
+                    # CEK JENIS FILE DI HALAMAN 1
+                    if "PERALATAN DALAM PERSINYALAN ELEKTRIK" in text_h1:
+                        is_persinyalan_elektrik = True
 
                     # CARI HALAMAN FOTO DOKUMENTASI
                     for img in images:
@@ -77,12 +79,24 @@ if uploaded_files:
                             target_page_text = current_text
                             break
                     
+                    # Failsafe jika tidak ada halaman foto, pakai hal 1
                     if not target_page_text:
                         target_page_text = text_h1
 
-                    # --- LOGIKA LOKASI ---
+                    # --- 1. LOGIKA [ASET] ---
                     if is_persinyalan_elektrik:
-                        # Ambil nama lokasi utuh (contoh: BOGOR)
+                        asset_name = "PDSE" # Jika terdeteksi Peralatan Dalam, Aset = PDSE
+                    else:
+                        # Untuk ceklis biasa, cari nama alat (Wesel, Sinyal, dll) di halaman target
+                        match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', target_page_text, re.IGNORECASE)
+                        if not match_aset: # Backup cek ke halaman 1
+                            match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_h1, re.IGNORECASE)
+                        
+                        asset_name = match_aset[0].upper().replace(".", "").replace(" ", "") if match_aset else "ASET"
+
+                    # --- 2. LOGIKA [LOKASI] ---
+                    if is_persinyalan_elektrik:
+                        # Ambil nama lokasi utuh dari halaman Foto Dokumentasi
                         loc_match = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s]{3,20})', target_page_text)
                         if loc_match:
                             final_location = loc_match.group(1).strip().split('\n')[0]
@@ -93,28 +107,11 @@ if uploaded_files:
                                     final_location = s
                                     break
                     else:
-                        # File Biasa: Pakai singkatan (BOO, MRI, dll)
+                        # Ceklis biasa: Pakai singkatan (BOO, MRI, dll)
                         loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', target_page_text)
                         loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB|SI|CCL|BGR)\b', target_page_text)
                         if loc_pair: final_location = loc_pair.group()
                         elif loc_single: final_location = loc_single[0]
-
-                    # --- LOGIKA ASET (KUNCI PERBAIKAN) ---
-                    # 1. Hapus tanggal dari string pencarian agar tidak dianggap aset
-                    name_cleaned = re.sub(r'\d{2}-\d{2}-\d{4}', '', name_only)
-                    
-                    # 2. Pecah sisa nama berdasarkan spasi atau underscore
-                    parts = re.split(r'[_\s\-]+', name_cleaned.upper())
-                    
-                    # 3. Cari potongan kata yang punya angka (seperti 201AT) tapi bukan sisa tanggal
-                    file_code = [p.strip() for p in parts if any(c.isdigit() for c in p) and len(p) >= 3]
-
-                    if is_persinyalan_elektrik and file_code:
-                        asset_name = file_code[0]
-                    else:
-                        # Ceklis biasa: cari Wesel/Sinyal/Blok
-                        match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_h1, re.IGNORECASE)
-                        asset_name = match_aset[0].upper().replace(".", "").replace(" ", "") if match_aset else "ASET"
 
                 except:
                     continue
