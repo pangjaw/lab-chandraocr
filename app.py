@@ -47,7 +47,7 @@ if uploaded_files:
         with placeholder.container():
             if lottie_train:
                 st_lottie(lottie_train, height=150, key="train_loader")
-            st.info("🚂 Sedang menyisir data lokasi PDSE...")
+            st.info("🚂 Sedang menyisir data lokasi di halaman Foto Dokumentasi...")
 
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for f in uploaded_files:
@@ -57,18 +57,15 @@ if uploaded_files:
 
                 final_location = "LOKASI_TIDAK_TERDETEKSI"
                 asset_name = "ASET"
-                is_pdse = False
                 
                 try:
-                    # Convert halaman (limit 10 halaman)
                     images = convert_from_bytes(f.getvalue(), dpi=150, last_page=10)
                     
                     target_page_text = ""
                     text_h1 = pytesseract.image_to_string(images[0]).upper()
                     
-                    # IDENTIFIKASI PDSE
-                    if "PERALATAN DALAM PERSINYALAN ELEKTRIK" in text_h1:
-                        is_pdse = True
+                    # CEK APAKAH INI FILE PERSINYALAN ELEKTRIK
+                    is_persinyalan_elektrik = "PERALATAN DALAM PERSINYALAN ELEKTRIK" in text_h1
 
                     # CARI HALAMAN FOTO DOKUMENTASI
                     for img in images:
@@ -80,31 +77,31 @@ if uploaded_files:
                     if not target_page_text:
                         target_page_text = text_h1
 
-                    # --- LOGIKA EKSTRAKSI LOKASI ---
-                    if is_pdse:
-                        # Untuk PDSE: Cari kata setelah 'LOKASI' atau 'STASIUN' secara utuh
-                        # Mencari pola seperti "LOKASI : BOGOR" atau "STASIUN : CILEBUT"
+                    # --- LOGIKA LOKASI (KHUSUS ELEKTRIK: NAMA UTUH) ---
+                    if is_persinyalan_elektrik:
+                        # Cari teks setelah label LOKASI/STASIUN
                         loc_match = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s]{3,20})', target_page_text)
                         if loc_match:
                             final_location = loc_match.group(1).strip().split('\n')[0]
                         else:
-                            # Jika tidak ada label, cari nama stasiun umum secara utuh
-                            common_stations = ["BOGOR", "CILEBUT", "BOJONG GEDE", "CITAYAM", "DEPOK", "PASAR MINGGU", "MANGGARAI", "TANAH ABANG", "JAKARTA KOTA"]
-                            for station in common_stations:
-                                if station in target_page_text:
-                                    final_location = station
+                            # Backup: cari nama stasiun populer
+                            stations = ["BOGOR", "CILEBUT", "BOJONG GEDE", "CITAYAM", "DEPOK", "MANGGARAI", "JAKARTA KOTA"]
+                            for s in stations:
+                                if s in target_page_text:
+                                    final_location = s
                                     break
                     else:
-                        # Untuk Perawatan Biasa: Tetap gunakan singkatan agar ringkas
+                        # File Biasa: Tetap pakai singkatan (BOO, MRI, dll)
                         loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', target_page_text)
                         loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB|SI|CCL|BGR)\b', target_page_text)
                         if loc_pair: final_location = loc_pair.group()
                         elif loc_single: final_location = loc_single[0]
 
-                    # --- LOGIKA EKSTRAKSI ASET ---
-                    if is_pdse:
-                        file_code = [p for p in name_only.upper().split("_") if any(c.isdigit() for c in p)]
-                        asset_name = file_code[0] if file_code else "ASET"
+                    # --- LOGIKA ASET ---
+                    # Ambil kode unik dari nama file asli (misal: 201AT, 24CT)
+                    file_code = [p for p in name_only.upper().split("_") if any(c.isdigit() for c in p)]
+                    if is_persinyalan_elektrik and file_code:
+                        asset_name = file_code[0]
                     else:
                         match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_h1, re.IGNORECASE)
                         asset_name = match_aset[0].upper().replace(".", "").replace(" ", "") if match_aset else "ASET"
@@ -112,9 +109,8 @@ if uploaded_files:
                 except:
                     continue
 
-                # --- PENAMAAN AKHIR ---
-                prefix = "PDSE" if is_pdse else "PERAWATAN"
-                new_name = f"{prefix} {asset_name} {final_location} {tgl}.pdf"
+                # --- FORMAT HARUS SELALU: PERAWATAN [ASET] [LOKASI] [TANGGAL] ---
+                new_name = f"PERAWATAN {asset_name} {final_location} {tgl}.pdf"
                 
                 zip_f.writestr(new_name, f.getvalue())
                 processed_files.append(new_name)
@@ -129,7 +125,7 @@ if uploaded_files:
             st.download_button(
                 label="📥 DOWNLOAD HASIL (.ZIP)",
                 data=zip_buffer.getvalue(),
-                file_name="Hasil_Rename_Sintelis_Lengkap.zip",
+                file_name="Hasil_Rename_Sintelis.zip",
                 mime="application/zip",
                 use_container_width=True,
                 type="primary"
