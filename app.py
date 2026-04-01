@@ -112,61 +112,73 @@ def delete_location(key_to_delete):
 import pandas as pd
 
 with st.sidebar:
+    # 1. Header Profil
     st.write(f"Halo, **{user_name}**")
     st.write(f"📧 {user_email}")
     st.divider()
 
-    # --- MENU NAVIGASI SIDEBAR ---
+    # 2. Menu Navigasi (Hanya 2 Menu Utama)
     menu_pilihan = st.radio(
         "Pilih Menu:",
-        ["📍 Kelola Tabel Lokasi", "📦 Backup & Restore", "🚪 Logout"]
+        ["📍 Kelola Lokasi", "📦 Backup & Restore"]
     )
 
     st.divider()
 
-    # --- KONDISI MENU 1: KELOLA TABEL ---
-    if menu_pilihan == "📍 Kelola Tabel Lokasi":
-        st.subheader("Edit Database Lokasi")
+    # --- KONDISI MENU 1: KELOLA LOKASI (Tabel Statis & Form) ---
+    if menu_pilihan == "📍 Kelola Lokasi":
+        st.subheader("Daftar Lokasi")
         
-        # Ambil data dari session state
-        current_data = [{"Lokasi": k, "Singkatan": v} for k, v in st.session_state.mapping_lokasi.items()]
-        if not current_data:
-            current_data = [{"Lokasi": "", "Singkatan": ""}]
+        if st.session_state.mapping_lokasi:
+            # Membuat DataFrame untuk tampilan tabel yang bersih
+            df_view = pd.DataFrame([
+                {"Lokasi": k, "Singkatan": v} 
+                for k, v in st.session_state.mapping_lokasi.items()
+            ])
+            # Tampilkan tabel statis (tidak bisa diedit langsung)
+            st.table(df_view)
+        else:
+            st.info("Database kosong.")
+
+        st.divider()
         
-        df = pd.DataFrame(current_data)
-
-        # Tabel Editor dengan baris dinamis (+)
-        edited_df = st.data_editor(
-            df,
-            column_config={
-                "Lokasi": st.column_config.TextColumn("Nama Lokasi", width="medium"),
-                "Singkatan": st.column_config.TextColumn("Singkatan", width="small"),
-            },
-            num_rows="dynamic",
-            use_container_width=True,
-            key="editor_tabel"
-        )
-
-        if st.button("💾 Simpan Perubahan", use_container_width=True):
-            # Proses simpan (Logika Bulk Save)
-            new_dict = dict(zip(edited_df['Lokasi'], edited_df['Singkatan']))
-            clean_dict = {k.strip().upper(): v.strip().upper() for k, v in new_dict.items() if k and v}
+        # Form Input untuk Tambah/Update
+        st.subheader("Tambah/Update")
+        with st.form("form_lokasi", clear_on_submit=True):
+            l_input = st.text_input("Nama Lokasi").upper().strip()
+            s_input = st.text_input("Singkatan").upper().strip()
+            submit = st.form_submit_button("Simpan ke Database", use_container_width=True)
             
-            # Simpan ke Firebase
-            db.collection("users").document(user_email).set({"mapping": clean_dict})
-            st.session_state.mapping_lokasi = clean_dict
-            st.success("Database berhasil disimpan!")
-            st.rerun()
+            if submit:
+                if l_input and s_input:
+                    st.session_state.mapping_lokasi[l_input] = s_input
+                    db.collection("users").document(user_email).set({"mapping": st.session_state.mapping_lokasi})
+                    st.success(f"Tersimpan: {l_input}")
+                    st.rerun()
+                else:
+                    st.error("Isi kedua kolom!")
+
+        # Fitur Hapus
+        if st.session_state.mapping_lokasi:
+            st.divider()
+            st.subheader("Hapus Data")
+            opsi_hapus = list(st.session_state.mapping_lokasi.keys())
+            target = st.selectbox("Pilih yang akan dihapus:", ["-- Pilih --"] + opsi_hapus)
+            if st.button("🗑️ Hapus Permanen", use_container_width=True) and target != "-- Pilih --":
+                del st.session_state.mapping_lokasi[target]
+                db.collection("users").document(user_email).set({"mapping": st.session_state.mapping_lokasi})
+                st.toast(f"{target} dihapus")
+                st.rerun()
 
     # --- KONDISI MENU 2: BACKUP & RESTORE ---
     elif menu_pilihan == "📦 Backup & Restore":
-        st.subheader("Export/Import JSON")
+        st.subheader("Export/Import Data")
         
-        # Fitur Export
-        db_json = json.dumps(st.session_state.mapping_lokasi, indent=4)
+        # Export
+        js_data = json.dumps(st.session_state.mapping_lokasi, indent=4)
         st.download_button(
             label="📥 Download Backup (.json)",
-            data=db_json,
+            data=js_data,
             file_name=f"backup_lokasi_{user_name}.json",
             mime="application/json",
             use_container_width=True
@@ -174,31 +186,28 @@ with st.sidebar:
 
         st.divider()
 
-        # Fitur Import
-        st.write("Upload file backup untuk menambah data:")
-        uploaded_db = st.file_uploader("Pilih file .json", type="json")
-        if uploaded_db:
+        # Import
+        st.write("Upload file .json untuk menambah data:")
+        file_up = st.file_uploader("Pilih file", type="json")
+        if file_up:
             try:
-                import_data = json.load(uploaded_db)
-                if isinstance(import_data, dict):
-                    # Gabungkan data lama dan baru
-                    st.session_state.mapping_lokasi.update(import_data)
-                    # Simpan permanen ke Firebase
+                data_up = json.load(file_up)
+                if isinstance(data_up, dict):
+                    st.session_state.mapping_lokasi.update(data_up)
                     db.collection("users").document(user_email).set({"mapping": st.session_state.mapping_lokasi})
-                    st.success("Data berhasil di-import!")
+                    st.success("Import Berhasil!")
                     st.rerun()
-                else:
-                    st.error("Format file salah!")
-            except Exception as e:
-                st.error(f"Error: {e}")
+            except:
+                st.error("File tidak valid!")
 
-    # --- KONDISI MENU 3: LOGOUT ---
-    elif menu_pilihan == "🚪 Logout":
-        st.warning("Apakah Anda yakin ingin keluar?")
-        if st.button("Ya, Log Out Sekarang", use_container_width=True):
-            st.session_state.connected = False
-            st.session_state.user_email = None
-            st.rerun()
+    # 3. TOMBOL LOGOUT (Selalu Tampil di Paling Bawah Sidebar)
+    # Kita berikan banyak divider atau spasi kosong agar terdorong ke bawah
+    st.write("---") 
+    if st.button("🚪 Log Out", use_container_width=True, type="secondary"):
+        st.session_state.connected = False
+        st.session_state.user_email = None
+        st.session_state.user_name = None
+        st.rerun()
 
 # --- 7. HALAMAN UTAMA: PROSES FILE ---
 st.title("🚀 Pemroses Nama Ceklis")
