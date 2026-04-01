@@ -144,23 +144,45 @@ if uploaded_files:
                 continue
 
             # 3. Cari Aset (OCR atau Nama File)
+            # --- LOGIKA OCR UNTUK ASET & LOKASI ---
             assets = []
+            found_short = None
+            
             if use_ocr:
                 try:
-                    images = convert_from_bytes(f.getvalue(), dpi=200)
+                    images = convert_from_bytes(f.getvalue(), dpi=300)
                     raw_text = pytesseract.image_to_string(images[0])
-                    # Mencari pola WESEL/SN/POLE/RELAY dll
-                    ocr_match = re.findall(r'(WESEL\s?\d+|SN\d+|POLE\s?\d+|G\.\d+|R\.\d+)', raw_text, re.IGNORECASE)
-                    if ocr_match:
-                        assets = [a.replace(" ", "_").upper() for a in ocr_match]
-                except Exception as e:
-                    st.error(f"OCR Error: {e}")
 
-            if not assets:
-                # Logika fallback jika OCR gagal: ambil sisa kata di nama file
-                clean_name = name_only.upper().replace(tgl, "").replace(found_short, "").strip("_ ")
-                parts = [p for p in clean_name.split("_") if any(c.isdigit() for c in p)]
-                assets = parts if parts else []
+                    # 1. AMBIL NOMOR ASET (Sinyal, Wesel, Axle Counter)
+                    # Logika: Cari kata SINYAL/WESEL/COUNTER, lalu ambil kode di dekatnya
+                    # Regex ini mencari kode aset yang diawali huruf B, W, ZP, MB, MJ, UB, dsb.
+                    pola_umum = re.findall(r'\b([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)\b', raw_text, re.IGNORECASE)
+                    
+                    if pola_umum:
+                        for a in pola_umum:
+                            # BERSIHKAN:
+                            # 1. Ubah ke Huruf Besar
+                            # 2. Hapus titik (B.112 -> B112)
+                            # 3. Hapus spasi (ZP 112 -> ZP112)
+                            clean_asset = a.upper().replace(".", "").replace(" ", "")
+                            
+                            # Validasi tambahan: pastikan bukan kode sampah (seperti tanggal atau No. SC)
+                            if len(clean_asset) > 1 and any(char.isdigit() for char in clean_asset):
+                                assets.append(clean_asset)
+
+                    # 2. AMBIL LOKASI (Contoh: CLT-BOO atau BOGOR)
+                    loc_match = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', raw_text)
+                    if loc_match:
+                        found_short = loc_match.group().upper()
+                    else:
+                        # Fallback: Cari nama lokasi dari database di dalam teks mentah
+                        for k, v in st.session_state.mapping_lokasi.items():
+                            if k.upper() in raw_text.upper().replace("-", " "):
+                                found_short = v
+                                break
+                                
+                except Exception as e:
+                    st.error(f"OCR Error pada {f.name}: {e}")
 
             # 4. Input Manual Jika Benar-benar Tidak Ketemu
             if not assets:
