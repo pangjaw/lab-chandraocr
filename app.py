@@ -21,7 +21,7 @@ def load_lottiefile(filepath: str):
     except:
         return None
 
-# NAMA JSON: metro rail.json
+# NAMA JSON: Metro Rail.json (Pastikan file fisiknya bernama sama)
 lottie_train = load_lottiefile("Metro Rail.json")
 
 # --- 2. TAMPILAN UTAMA ---
@@ -52,6 +52,8 @@ if uploaded_files:
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for f in uploaded_files:
                 name_only = os.path.splitext(f.name)[0]
+                
+                # Ambil Tanggal Asli (DD-MM-YYYY)
                 tgl_match = re.search(r'\d{2}-\d{2}-\d{4}', name_only)
                 tgl = tgl_match.group() if tgl_match else "00-00-0000"
 
@@ -59,6 +61,7 @@ if uploaded_files:
                 asset_name = "ASET"
                 
                 try:
+                    # Convert PDF ke gambar (Max 10 hal agar cepat)
                     images = convert_from_bytes(f.getvalue(), dpi=150, last_page=10)
                     
                     target_page_text = ""
@@ -77,43 +80,46 @@ if uploaded_files:
                     if not target_page_text:
                         target_page_text = text_h1
 
-                    # --- LOGIKA LOKASI (KHUSUS ELEKTRIK: NAMA UTUH) ---
+                    # --- LOGIKA LOKASI ---
                     if is_persinyalan_elektrik:
-                        # Cari teks setelah label LOKASI/STASIUN
+                        # Ambil nama lokasi utuh (contoh: BOGOR)
                         loc_match = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s]{3,20})', target_page_text)
                         if loc_match:
                             final_location = loc_match.group(1).strip().split('\n')[0]
                         else:
-                            # Backup: cari nama stasiun populer
                             stations = ["BOGOR", "CILEBUT", "BOJONG GEDE", "CITAYAM", "DEPOK", "MANGGARAI", "JAKARTA KOTA"]
                             for s in stations:
                                 if s in target_page_text:
                                     final_location = s
                                     break
                     else:
-                        # File Biasa: Tetap pakai singkatan (BOO, MRI, dll)
+                        # File Biasa: Pakai singkatan (BOO, MRI, dll)
                         loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', target_page_text)
                         loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB|SI|CCL|BGR)\b', target_page_text)
                         if loc_pair: final_location = loc_pair.group()
                         elif loc_single: final_location = loc_single[0]
 
-                    # --- LOGIKA ASET (DIPERBAIKI) ---
-                    # 1. Bersihkan dulu tanggal dari nama file agar tidak dianggap sebagai Aset
+                    # --- LOGIKA ASET (KUNCI PERBAIKAN) ---
+                    # 1. Hapus tanggal dari string pencarian agar tidak dianggap aset
                     name_cleaned = re.sub(r'\d{2}-\d{2}-\d{4}', '', name_only)
                     
-                    # 2. Ambil potongan nama yang tersisa yang mengandung angka (seperti 201AT, 24CT, dsb)
-                    # Kita pecah berdasarkan underscore (_) atau spasi
-                    parts = re.split(r'[_\s]+', name_cleaned.upper())
-                    file_code = [p.strip() for p in parts if any(c.isdigit() for c in p) and len(p) > 2]
+                    # 2. Pecah sisa nama berdasarkan spasi atau underscore
+                    parts = re.split(r'[_\s\-]+', name_cleaned.upper())
+                    
+                    # 3. Cari potongan kata yang punya angka (seperti 201AT) tapi bukan sisa tanggal
+                    file_code = [p.strip() for p in parts if any(c.isdigit() for c in p) and len(p) >= 3]
 
                     if is_persinyalan_elektrik and file_code:
                         asset_name = file_code[0]
                     else:
-                        # Untuk ceklis biasa, cari keyword WESEL/SINYAL/BLOK
+                        # Ceklis biasa: cari Wesel/Sinyal/Blok
                         match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_h1, re.IGNORECASE)
                         asset_name = match_aset[0].upper().replace(".", "").replace(" ", "") if match_aset else "ASET"
 
-                # --- FORMAT HARUS SELALU: PERAWATAN [ASET] [LOKASI] [TANGGAL] ---
+                except:
+                    continue
+
+                # --- FORMAT FINAL: PERAWATAN [ASET] [LOKASI] [TANGGAL] ---
                 new_name = f"PERAWATAN {asset_name} {final_location} {tgl}.pdf"
                 
                 zip_f.writestr(new_name, f.getvalue())
