@@ -145,6 +145,7 @@ if uploaded_files:
 
             # 3. Cari Aset (OCR atau Nama File)
             # --- LOGIKA OCR UNTUK ASET & LOKASI ---
+            # --- LOGIKA OCR UNTUK ASET & LOKASI ---
             assets = []
             found_short = None
             
@@ -153,36 +154,30 @@ if uploaded_files:
                     images = convert_from_bytes(f.getvalue(), dpi=300)
                     raw_text = pytesseract.image_to_string(images[0])
 
-                    # 1. AMBIL NOMOR ASET (Sinyal, Wesel, Axle Counter)
-                    # Logika: Cari kata SINYAL/WESEL/COUNTER, lalu ambil kode di dekatnya
-                    # Regex ini mencari kode aset yang diawali huruf B, W, ZP, MB, MJ, UB, dsb.
-                    pola_umum = re.findall(r'\b([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)\b', raw_text, re.IGNORECASE)
+                    # 1. CARI SEMUA KODE ASET (B, W, ZP, UB, dll)
+                    ocr_match = re.findall(r'\b([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)\b', raw_text, re.IGNORECASE)
                     
-                    if pola_umum:
-                        for a in pola_umum:
-                            # BERSIHKAN:
-                            # 1. Ubah ke Huruf Besar
-                            # 2. Hapus titik (B.112 -> B112)
-                            # 3. Hapus spasi (ZP 112 -> ZP112)
-                            clean_asset = a.upper().replace(".", "").replace(" ", "")
-                            
-                            # Validasi tambahan: pastikan bukan kode sampah (seperti tanggal atau No. SC)
-                            if len(clean_asset) > 1 and any(char.isdigit() for char in clean_asset):
-                                assets.append(clean_asset)
+                    if ocr_match:
+                        # Membersihkan format (Hapus titik & spasi)
+                        cleaned_list = [a.upper().replace(".", "").replace(" ", "") for a in ocr_match]
+                        
+                        # Hapus Duplikat tanpa merusak urutan
+                        unique_assets = []
+                        for item in cleaned_list:
+                            if item not in unique_assets:
+                                unique_assets.append(item)
+                        
+                        # --- DI SINI LIMITNYA: HANYA AMBIL 5 TERATAS ---
+                        assets = unique_assets[:5] 
 
-                    # 2. AMBIL LOKASI (Contoh: CLT-BOO atau BOGOR)
+                    # 2. CARI LOKASI (CLT-BOO)
                     loc_match = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', raw_text)
                     if loc_match:
                         found_short = loc_match.group().upper()
-                    else:
-                        # Fallback: Cari nama lokasi dari database di dalam teks mentah
-                        for k, v in st.session_state.mapping_lokasi.items():
-                            if k.upper() in raw_text.upper().replace("-", " "):
-                                found_short = v
-                                break
-                                
+                        
                 except Exception as e:
-                    st.error(f"OCR Error pada {f.name}: {e}")
+                    st.error(f"OCR Error: {e}")
+                    
 
             # 4. Input Manual Jika Benar-benar Tidak Ketemu
             if not assets:
