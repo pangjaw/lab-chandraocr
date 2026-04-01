@@ -86,6 +86,9 @@ if not st.session_state.connected:
     st.stop()
 
 # --- SETELAH LOGIN ---
+if 'antrean_lokasi' not in st.session_state:
+    st.session_state.antrean_lokasi = []
+
 user_email = st.session_state.user_email
 user_name = st.session_state.user_name
 
@@ -125,50 +128,61 @@ with st.sidebar:
 
     st.divider()
 
-    # --- KONDISI MENU 1: KELOLA LOKASI (Tabel Statis & Form) ---
+    # --- KONDISI MENU 1: KELOLA LOKASI ---
     if menu_pilihan == "📍 Kelola Lokasi":
-        st.subheader("Daftar Lokasi")
-        
-        if st.session_state.mapping_lokasi:
-            # Membuat DataFrame untuk tampilan tabel yang bersih
-            df_view = pd.DataFrame([
-                {"Lokasi": k, "Singkatan": v} 
-                for k, v in st.session_state.mapping_lokasi.items()
-            ])
-            # Tampilkan tabel statis (tidak bisa diedit langsung)
-            st.table(df_view)
-        else:
-            st.info("Database kosong.")
-
-        st.divider()
-        
-        # Form Input untuk Tambah/Update
-        st.subheader("Tambah/Update")
-        with st.form("form_lokasi", clear_on_submit=True):
+        st.subheader("1. Tambah ke Antrean")
+        # Form ini hanya untuk menambah ke daftar sementara di layar
+        with st.form("form_antrean", clear_on_submit=True):
             l_input = st.text_input("Nama Lokasi").upper().strip()
             s_input = st.text_input("Singkatan").upper().strip()
-            submit = st.form_submit_button("Simpan ke Database", use_container_width=True)
+            tambah_antrean = st.form_submit_button("➕ Masukkan ke Daftar", use_container_width=True)
             
-            if submit:
+            if tambah_antrean:
                 if l_input and s_input:
-                    st.session_state.mapping_lokasi[l_input] = s_input
-                    db.collection("users").document(user_email).set({"mapping": st.session_state.mapping_lokasi})
-                    st.success(f"Tersimpan: {l_input}")
-                    st.rerun()
+                    # Masukkan ke list sementara
+                    st.session_state.antrean_lokasi.append({"Lokasi": l_input, "Singkatan": s_input})
+                    st.toast(f"Ditambahkan ke daftar: {l_input}")
                 else:
                     st.error("Isi kedua kolom!")
 
-        # Fitur Hapus
-        if st.session_state.mapping_lokasi:
-            st.divider()
-            st.subheader("Hapus Data")
-            opsi_hapus = list(st.session_state.mapping_lokasi.keys())
-            target = st.selectbox("Pilih yang akan dihapus:", ["-- Pilih --"] + opsi_hapus)
-            if st.button("🗑️ Hapus Permanen", use_container_width=True) and target != "-- Pilih --":
-                del st.session_state.mapping_lokasi[target]
-                db.collection("users").document(user_email).set({"mapping": st.session_state.mapping_lokasi})
-                st.toast(f"{target} dihapus")
+        # Tampilkan Antrean Jika Ada
+        if st.session_state.antrean_lokasi:
+            st.write("---")
+            st.subheader("2. Daftar Antrean")
+            df_antrean = pd.DataFrame(st.session_state.antrean_lokasi)
+            st.table(df_antrean)
+            
+            col_a, col_b = st.columns(2)
+            if col_a.button("🗑️ Kosongkan", use_container_width=True):
+                st.session_state.antrean_lokasi = []
                 st.rerun()
+                
+            if col_b.button("💾 SIMPAN SEMUA", type="primary", use_container_width=True):
+                # Proses pindahkan dari antrean ke database utama
+                for item in st.session_state.antrean_lokasi:
+                    st.session_state.mapping_lokasi[item["Lokasi"]] = item["Singkatan"]
+                
+                # Simpan permanen ke Firebase
+                db.collection("users").document(user_email).set({"mapping": st.session_state.mapping_lokasi})
+                
+                # Bersihkan antrean
+                st.session_state.antrean_lokasi = []
+                st.success("Semua data berhasil masuk database!")
+                st.rerun()
+
+        st.write("---")
+        st.subheader("3. Database Saat Ini")
+        if st.session_state.mapping_lokasi:
+            df_view = pd.DataFrame([{"Lokasi": k, "Singkatan": v} for k, v in st.session_state.mapping_lokasi.items()])
+            st.table(df_view)
+            
+            # Fitur Hapus (Opsional tetap ada di bawah)
+            with st.expander("Fitur Hapus"):
+                target = st.selectbox("Pilih lokasi:", ["-- Pilih --"] + list(st.session_state.mapping_lokasi.keys()))
+                if st.button("Hapus Permanen") and target != "-- Pilih --":
+                    del st.session_state.mapping_lokasi[target]
+                    db.collection("users").document(user_email).set({"mapping": st.session_state.mapping_lokasi})
+                    st.rerun()
 
     # --- KONDISI MENU 2: BACKUP & RESTORE ---
     elif menu_pilihan == "📦 Backup & Restore":
