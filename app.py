@@ -21,7 +21,8 @@ def load_lottiefile(filepath: str):
     except:
         return None
 
-lottie_train = load_lottiefile("train_loading.json")
+# NAMA JSON DIUBAH MENJADI METRO RAIL.JSON
+lottie_train = load_lottiefile("metro rail.json")
 
 # --- 2. TAMPILAN UTAMA ---
 st.set_page_config(page_title="Ganti Nama File Ceklis Sintelis", page_icon="📑", layout="wide")
@@ -46,7 +47,7 @@ if uploaded_files:
         with placeholder.container():
             if lottie_train:
                 st_lottie(lottie_train, height=150, key="train_loader")
-            st.info("🚂 Mencari halaman Foto Dokumentasi...")
+            st.info("🚂 Mencari data di halaman Foto Dokumentasi...")
 
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for f in uploaded_files:
@@ -56,34 +57,30 @@ if uploaded_files:
 
                 found_short = "LOKASI_TIDAK_TERDETEKSI"
                 asset_name = "ASET"
+                is_pdse = False
                 
                 try:
-                    # Convert semua halaman (atau batasi misal 5 halaman pertama agar cepat)
-                    images = convert_from_bytes(f.getvalue(), dpi=150) 
+                    # Convert halaman (limit 10 halaman)
+                    images = convert_from_bytes(f.getvalue(), dpi=150, last_page=10)
                     
                     target_page_text = ""
-                    is_pdse = False
+                    
+                    # SCAN HALAMAN 1 UNTUK CEK JENIS "PERALATAN DALAM SINYAL ELEKTRIK"
+                    text_h1 = pytesseract.image_to_string(images[0]).upper()
+                    if "PERALATAN DALAM SINYAL ELEKTRIK" in text_h1:
+                        is_pdse = True
 
-                    # LOOP UNTUK MENCARI HALAMAN "FOTO DOKUMENTASI"
-                    for i, img in enumerate(images):
+                    # CARI HALAMAN FOTO DOKUMENTASI UNTUK LOKASI
+                    for img in images:
                         current_text = pytesseract.image_to_string(img).upper()
-                        
-                        # Cek apakah ini file Peralatan Dalam
-                        if i == 0 and "PERALATAN DALAM SINYAL ELEKTRIK" in current_text:
-                            is_pdse = True
-                        
-                        # JIKA KETEMU KATA KUNCI FOTO DOKUMENTASI
                         if "FOTO DOKUMENTASI" in current_text:
                             target_page_text = current_text
-                            break # Berhenti mencari jika sudah ketemu
+                            break
                     
-                    # Jika tidak ketemu halaman foto, gunakan teks halaman pertama sebagai cadangan
                     if not target_page_text:
-                        target_page_text = pytesseract.image_to_string(images[0]).upper()
+                        target_page_text = text_h1
 
-                    # --- EKSTRAKSI DATA DARI HALAMAN TARGET ---
-                    
-                    # 1. Deteksi Lokasi
+                    # 1. Ambil Lokasi (BOO, MRI, dsb)
                     loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', target_page_text)
                     loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB|SI|CCL|BGR)\b', target_page_text)
 
@@ -91,23 +88,20 @@ if uploaded_files:
                     elif loc_single: found_short = loc_single[0]
                     elif "BOGOR" in target_page_text: found_short = "BOO"
 
-                    # 2. Deteksi Aset
-                    if not is_pdse:
-                        match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', target_page_text, re.IGNORECASE)
-                        if not match_aset: # Cek halaman 1 jika di hal foto tidak ada info aset
-                            text_h1 = pytesseract.image_to_string(images[0]).upper()
-                            match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_h1, re.IGNORECASE)
-                        
-                        asset_name = match_aset[0].upper().replace(".", "").replace(" ", "") if match_aset else "ASET"
-                    else:
-                        # Untuk PDSE ambil kode dari nama file asli
+                    # 2. Ambil Nama Aset
+                    if is_pdse:
+                        # Ambil kode unik dari nama file asli untuk PDSE
                         file_code = [p for p in name_only.upper().split("_") if any(c.isdigit() for c in p)]
-                        asset_name = file_code[0] if file_code else "PDSE"
+                        asset_name = file_code[0] if file_code else "ASET"
+                    else:
+                        # Cari Wesel/Sinyal/Blok untuk Perawatan Biasa
+                        match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_h1, re.IGNORECASE)
+                        asset_name = match_aset[0].upper().replace(".", "").replace(" ", "") if match_aset else "ASET"
 
                 except:
                     continue
 
-                # Penamaan Akhir
+                # --- FORMAT PENAMAAN SESUAI PERMINTAAN ---
                 prefix = "PDSE" if is_pdse else "PERAWATAN"
                 new_name = f"{prefix} {asset_name} {found_short} {tgl}.pdf"
                 
@@ -122,7 +116,7 @@ if uploaded_files:
                     st.write(f"✅ `{p_file}`")
             
             st.download_button(
-                label="📥 DOWNLOAD (.ZIP)",
+                label="📥 DOWNLOAD HASIL (.ZIP)",
                 data=zip_buffer.getvalue(),
                 file_name="Hasil_Rename_Sintelis.zip",
                 mime="application/zip",
