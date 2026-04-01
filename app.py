@@ -10,7 +10,7 @@ from io import BytesIO
 from pdf2image import convert_from_bytes
 from streamlit_lottie import st_lottie
 
-# --- 1. KONFIGURASI & FUNGSI LOADING ---
+# --- 1. KONFIGURASI OCR ---
 if platform.system() == "Windows":
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
@@ -21,20 +21,18 @@ def load_lottiefile(filepath: str):
     except:
         return None
 
-# Load file JSON animasi kereta
-lottie_train = load_lottiefile("Metro Rail.json")
+lottie_train = load_lottiefile("train_loading.json")
 
 # --- 2. TAMPILAN UTAMA ---
 st.set_page_config(page_title="Ganti Nama File Ceklis Sintelis", page_icon="📑", layout="wide")
 st.title("📑 GANTI NAMA FILE CEKLIS SINTELIS")
 
-# Layout Horizontal
 col1, col2 = st.columns([1, 1], gap="large")
 
 with col1:
     st.subheader("📁 Input & Setting")
     use_ocr = st.checkbox("Gunakan OCR Otomatis", value=True)
-    uploaded_files = st.file_uploader("Upload PDF", type="pdf", accept_multiple_files=True)
+    uploaded_files = st.file_uploader("Upload PDF (Ceklis Biasa / Peralatan Dalam)", type="pdf", accept_multiple_files=True)
 
 # --- 3. PROSES DATA ---
 if uploaded_files:
@@ -43,74 +41,77 @@ if uploaded_files:
     
     with col2:
         st.subheader("📋 Hasil Proses")
-        
-        # Area kosong untuk animasi (Placeholder)
         placeholder = st.empty()
         
-        # Tampilkan animasi di dalam placeholder selama proses
         with placeholder.container():
             if lottie_train:
                 st_lottie(lottie_train, height=150, key="train_loader")
-            st.info("🚂 Sedang memproses data Sintelis...")
+            st.info("🚂 Sedang menyisir data Peralatan Dalam Sinyal Elektrik...")
 
-        # Mulai Logika OCR
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for f in uploaded_files:
                 name_only = os.path.splitext(f.name)[0]
                 tgl_match = re.search(r'\d{2}-\d{2}-\d{4}', name_only)
-                if not tgl_match: continue
-                tgl = tgl_match.group()
+                tgl = tgl_match.group() if tgl_match else "00-00-0000"
 
-                assets = []
                 found_short = "LOKASI_TIDAK_TERDETEKSI"
+                asset_name = "PDSE" # Default jika peralatan dalam
                 
                 try:
-                    images = convert_from_bytes(f.getvalue(), dpi=300)
-                    img = images[0]
-                    width, height = img.size
+                    # Convert minimal 2 halaman pertama
+                    images = convert_from_bytes(f.getvalue(), dpi=200, last_page=2)
+                    
+                    # Scan Halaman 1 untuk identifikasi jenis ceklis
+                    text_page_1 = pytesseract.image_to_string(images[0]).upper()
+                    
+                    # Logika Pencarian: PERALATAN DALAM SINYAL ELEKTRIK
+                    is_pdse = "PERALATAN DALAM SINYAL ELEKTRIK" in text_page_1 or "PDSE" in text_page_1
+                    
+                    # Tentukan halaman mana yang akan diambil lokasinya
+                    if is_pdse and len(images) >= 2:
+                        page_for_location = images[1] # Fokus ke Halaman 2
+                    else:
+                        page_for_location = images[0] # Fokus ke Halaman 1
 
-                    if use_ocr:
-                        left, top, right, bottom = width*0.55, height*0.05, width*0.98, height*0.55
-                        img_cropped = img.crop((left, top, right, bottom))
-                        text_aset = pytesseract.image_to_string(img_cropped)
-                        match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_aset, re.IGNORECASE)
-                        
-                        if match_aset:
-                            cleaned = [a.upper().replace(".", "").replace(" ", "") for a in match_aset]
-                            for item in cleaned:
-                                if item not in assets: assets.append(item)
-                            assets = assets[:5]
+                    # Jalankan OCR pada halaman target
+                    text_target = pytesseract.image_to_string(page_for_location).upper()
 
-                        full_text = pytesseract.image_to_string(img).upper()
-                        loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', full_text)
-                        loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB)\b', full_text)
+                    # A. DETEKSI LOKASI (Singkatan Stasiun)
+                    loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', text_target)
+                    loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB|SI|CCL|BGR)\b', text_target)
 
-                        if loc_pair: found_short = loc_pair.group().upper()
-                        elif loc_single: found_short = loc_single[0]
-                        elif "BOGOR" in full_text: found_short = "BOO"
+                    if loc_pair: found_short = loc_pair.group()
+                    elif loc_single: found_short = loc_single[0]
+                    elif "BOGOR" in text_target: found_short = "BOO"
+
+                    # B. DETEKSI ASET
+                    if not is_pdse:
+                        match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_target, re.IGNORECASE)
+                        asset_name = match_aset[0].upper().replace(".", "").replace(" ", "") if match_aset else "ASET"
+                    else:
+                        # Untuk PDSE, kita bisa ambil dari nama file asli jika ada kodenya
+                        file_code = [p for p in name_only.upper().split("_") if any(c.isdigit() for c in p)]
+                        asset_name = file_code[0] if file_code else "PDSE"
+
                 except:
                     continue
 
-                if not assets:
-                    assets = [p for p in name_only.upper().split("_") if any(c.isdigit() for c in p)][:1]
+                # Gabungkan Nama
+                prefix = "PDSE" if is_pdse else "PERAWATAN"
+                new_name = f"{prefix} {asset_name} {found_short} {tgl}.pdf"
                 
-                if assets:
-                    for asset in assets:
-                        new_name = f"PERAWATAN {asset} {found_short} {tgl}.pdf"
-                        zip_f.writestr(new_name, f.getvalue())
-                        processed_files.append(new_name)
+                zip_f.writestr(new_name, f.getvalue())
+                processed_files.append(new_name)
 
-        # HAPUS ANIMASI setelah selesai (Kosongkan placeholder)
         placeholder.empty()
 
-        # Tampilkan Hasil & Tombol Download
         if processed_files:
             with st.container(height=250):
                 for p_file in processed_files:
                     st.write(f"✅ `{p_file}`")
             
             st.download_button(
-                label="📥 DOWNLOAD HASIL (.ZIP)",
+                label="📥 DOWNLOAD (.ZIP)",
                 data=zip_buffer.getvalue(),
                 file_name="Hasil_Rename_Sintelis.zip",
                 mime="application/zip",
@@ -118,6 +119,5 @@ if uploaded_files:
                 type="primary"
             )
 
-# --- FOOTER KREDIT ---
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis KAI Utility</div>", unsafe_allow_html=True)
