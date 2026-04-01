@@ -35,6 +35,21 @@ def get_user_db(email):
 def save_user_db(email, mapping):
     db.collection("users").document(email).set({"mapping": mapping})
 
+def import_user_db(email, new_mapping):
+    # Menggabungkan data lama dengan data baru (Update)
+    current_mapping = get_user_db(email)
+    current_mapping.update(new_mapping) 
+    save_user_db(email, current_mapping)
+    return current_mapping
+
+def save_bulk_user_db(email, df_mapping):
+    # Mengubah DataFrame kembali ke format dictionary {LOKASI: KODE}
+    new_dict = dict(zip(df_mapping['Lokasi'], df_mapping['Singkatan']))
+    # Filter agar baris kosong tidak ikut tersimpan
+    clean_dict = {k.strip().upper(): v.strip().upper() for k, v in new_dict.items() if k and v}
+    db.collection("users").document(email).set({"mapping": clean_dict})
+    return clean_dict
+
 # --- 4. LOGIKA LOGIN MANDIRI ---
 if 'connected' not in st.session_state:
     st.session_state.connected = False
@@ -94,22 +109,75 @@ def delete_location(key_to_delete):
         st.toast(f"Dihapus: {key_to_delete}", icon="🗑️")
 
 # --- 6. UI SIDEBAR ---
+import pandas as pd
+
 with st.sidebar:
-    st.write(f"Halo, **{user_name}**") # Menggunakan user_name hasil login
+    st.write(f"Halo, **{user_name}**")
     st.write(f"📧 {user_email}")
     
-    st.header("📍 Database Lokasi")
-    st.text_input("Tambah (LOKASI=KODE lalu Enter)", key="input_baru", on_change=add_location_callback)
-    
     st.divider()
-    st.subheader("Daftar Lokasi")
-    for k, v in list(st.session_state.mapping_lokasi.items()):
-        col1, col2 = st.columns([3, 1])
-        col1.write(f"**{k}** → {v}")
-        if col2.button("❌", key=f"del_{k}"):
-            delete_location(k)
-            st.rerun()
-            
+    st.header("📍 Kelola Lokasi")
+    
+    # 1. Konversi dictionary ke DataFrame untuk ditampilkan di tabel
+    current_data = []
+    for k, v in st.session_state.mapping_lokasi.items():
+        current_data.append({"Lokasi": k, "Singkatan": v})
+    
+    # Jika database kosong, buatkan 1 baris kosong sebagai awalan
+    if not current_data:
+        current_data = [{"Lokasi": "", "Singkatan": ""}]
+    
+    df = pd.DataFrame(current_data)
+
+    # 2. Tampilkan Tabel Editor
+    st.write("Edit atau tambah baris di bawah:")
+    edited_df = st.data_editor(
+        df,
+        column_config={
+            "Lokasi": st.column_config.TextColumn("Nama Lokasi", help="Contoh: BOGOR", width="medium"),
+            "Singkatan": st.column_config.TextColumn("Singkatan", help="Contoh: BOO", width="small"),
+        },
+        num_rows="dynamic", # Memungkinkan user tambah/hapus baris sendiri (tombol +)
+        use_container_width=True,
+        key="editor_lokasi"
+    )
+
+    # 3. Tombol Simpan Perubahan
+    if st.button("💾 Simpan Perubahan Tabel", use_container_width=True):
+        new_mapping = save_bulk_user_db(user_email, edited_df)
+        st.session_state.mapping_lokasi = new_mapping
+        st.toast("Database Lokasi diperbarui!", icon="✅")
+        st.rerun()
+
+    st.divider()
+    # ... (Tambahkan fitur Export/Import atau Logout di bawah sini)
+
+    # --- FITUR EXPORT ---
+    # Mengubah dictionary ke string JSON
+    db_json = json.dumps(st.session_state.mapping_lokasi, indent=4)
+    st.download_button(
+        label="Export Database (.json)",
+        data=db_json,
+        file_name=f"backup_lokasi_{user_name}.json",
+        mime="application/json",
+        use_container_width=True
+    )
+
+    # --- FITUR IMPORT ---
+    uploaded_db = st.file_uploader("Import Database", type="json")
+    if uploaded_db is not None:
+        try:
+            import_data = json.load(uploaded_db)
+            # Validasi sederhana apakah formatnya dictionary
+            if isinstance(import_data, dict):
+                st.session_state.mapping_lokasi = import_user_db(user_email, import_data)
+                st.success("Database berhasil diperbarui!")
+                st.rerun()
+            else:
+                st.error("Format JSON tidak valid!")
+        except Exception as e:
+            st.error(f"Gagal import: {e}")
+
     st.divider()
     if st.button("Log Out", use_container_width=True):
         st.session_state.connected = False
