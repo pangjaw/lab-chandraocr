@@ -28,7 +28,6 @@ lottie_train = load_lottiefile("Metro Rail.json")
 st.set_page_config(page_title="Ganti Nama File Ceklis Sintelis", page_icon="📑", layout="wide")
 st.title("📑 GANTI NAMA FILE CEKLIS SINTELIS")
 
-# Layout Horizontal
 col1, col2 = st.columns([1, 1], gap="large")
 
 with col1:
@@ -43,67 +42,92 @@ if uploaded_files:
     
     with col2:
         st.subheader("📋 Hasil Proses")
-        
-        # Area kosong untuk animasi (Placeholder)
         placeholder = st.empty()
         
-        # Tampilkan animasi di dalam placeholder selama proses
         with placeholder.container():
             if lottie_train:
                 st_lottie(lottie_train, height=150, key="train_loader")
             st.info("🚂 Sedang memproses data Sintelis...")
 
-        # Mulai Logika OCR
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for f in uploaded_files:
-                name_only = os.path.splitext(f.name)[0]
+                name_only = os.path.splitext(f.name)[0].upper()
+                
+                # Ambil Tanggal (DD-MM-YYYY)
                 tgl_match = re.search(r'\d{2}-\d{2}-\d{4}', name_only)
                 if not tgl_match: continue
                 tgl = tgl_match.group()
 
-                assets = []
+                asset_name = ""
                 found_short = "LOKASI_TIDAK_TERDETEKSI"
+                is_pdse = False
+
+                # --- SYARAT 1: UTAMAKAN NAMA FILE ASLI (AXLE, SINYAL, WESEL) ---
+                # Bersihkan tanggal dari nama file untuk mencari kode aset
+                name_cleaned = re.sub(r'\d{2}-\d{2}-\d{4}', '', name_only)
+                parts = re.split(r'[_\s\-]+', name_cleaned)
+                # Ambil bagian yang mengandung angka (seperti 201AT, W12, dll)
+                potential_codes = [p.strip() for p in parts if any(c.isdigit() for c in p) and len(p) >= 2]
+
+                if any(x in name_only for x in ["AXLE", "SINYAL", "WESEL", "COUNTER"]):
+                    if potential_codes:
+                        asset_name = potential_codes[0]
                 
+                # --- SYARAT 2: JIKA TIDAK ADA DI SYARAT 1, CEK LOGIKA PDSE ---
                 try:
-                    images = convert_from_bytes(f.getvalue(), dpi=300)
-                    img = images[0]
-                    width, height = img.size
+                    # Convert minimal halaman untuk efisiensi (hal 1 dan cari hal foto)
+                    images = convert_from_bytes(f.getvalue(), dpi=150, last_page=10)
+                    text_h1 = pytesseract.image_to_string(images[0]).upper()
+                    
+                    # Jika belum ketemu asset_name, cek apakah ini PDSE
+                    if not asset_name:
+                        if "PERALATAN DALAM PERSINYALAN ELEKTRIK" in text_h1:
+                            asset_name = "PDSE"
+                            is_pdse = True
+                    
+                    # Cari Halaman Foto Dokumentasi untuk Lokasi
+                    target_page_text = ""
+                    for img in images:
+                        txt = pytesseract.image_to_string(img).upper()
+                        if "FOTO DOKUMENTASI" in txt:
+                            target_page_text = txt
+                            break
+                    
+                    if not target_page_text: target_page_text = text_h1
 
-                    if use_ocr:
-                        left, top, right, bottom = width*0.55, height*0.05, width*0.98, height*0.55
-                        img_cropped = img.crop((left, top, right, bottom))
-                        text_aset = pytesseract.image_to_string(img_cropped)
-                        match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_aset, re.IGNORECASE)
-                        
-                        if match_aset:
-                            cleaned = [a.upper().replace(".", "").replace(" ", "") for a in match_aset]
-                            for item in cleaned:
-                                if item not in assets: assets.append(item)
-                            assets = assets[:5]
-
-                        full_text = pytesseract.image_to_string(img).upper()
-                        loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', full_text)
-                        loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB)\b', full_text)
-
-                        if loc_pair: found_short = loc_pair.group().upper()
+                    # --- DETEKSI LOKASI ---
+                    if is_pdse:
+                        # Lokasi Utuh untuk PDSE
+                        loc_match = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s]{3,20})', target_page_text)
+                        if loc_match:
+                            found_short = loc_match.group(1).strip().split('\n')[0]
+                        else:
+                            stations = ["BOGOR", "CILEBUT", "BOJONG GEDE", "CITAYAM", "DEPOK", "MANGGARAI"]
+                            for s in stations:
+                                if s in target_page_text:
+                                    found_short = s
+                                    break
+                    else:
+                        # Lokasi Singkatan untuk Ceklis Utama
+                        loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', target_page_text)
+                        loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB|SI|CCL|BGR)\b', target_page_text)
+                        if loc_pair: found_short = loc_pair.group()
                         elif loc_single: found_short = loc_single[0]
-                        elif "BOGOR" in full_text: found_short = "BOO"
+                        elif "BOGOR" in target_page_text: found_short = "BOO"
+
                 except:
-                    continue
+                    pass
 
-                if not assets:
-                    assets = [p for p in name_only.upper().split("_") if any(c.isdigit() for c in p)][:1]
-                
-                if assets:
-                    for asset in assets:
-                        new_name = f"PERAWATAN {asset} {found_short} {tgl}.pdf"
-                        zip_f.writestr(new_name, f.getvalue())
-                        processed_files.append(new_name)
+                # Failsafe jika asset_name masih kosong
+                if not asset_name: asset_name = "ASET"
 
-        # HAPUS ANIMASI setelah selesai (Kosongkan placeholder)
+                # --- PENAMAAN FINAL ---
+                new_name = f"PERAWATAN {asset_name} {found_short} {tgl}.pdf"
+                zip_f.writestr(new_name, f.getvalue())
+                processed_files.append(new_name)
+
         placeholder.empty()
 
-        # Tampilkan Hasil & Tombol Download
         if processed_files:
             with st.container(height=250):
                 for p_file in processed_files:
@@ -118,6 +142,5 @@ if uploaded_files:
                 type="primary"
             )
 
-# --- FOOTER KREDIT ---
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis KAI Utility</div>", unsafe_allow_html=True)
