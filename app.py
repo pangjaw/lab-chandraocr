@@ -32,7 +32,7 @@ col1, col2 = st.columns([1, 1], gap="large")
 with col1:
     st.subheader("📁 Input & Setting")
     use_ocr = st.checkbox("Gunakan OCR Otomatis", value=True)
-    uploaded_files = st.file_uploader("Upload PDF (Ceklis Biasa / Peralatan Dalam)", type="pdf", accept_multiple_files=True)
+    uploaded_files = st.file_uploader("Upload PDF", type="pdf", accept_multiple_files=True)
 
 # --- 3. PROSES DATA ---
 if uploaded_files:
@@ -46,7 +46,7 @@ if uploaded_files:
         with placeholder.container():
             if lottie_train:
                 st_lottie(lottie_train, height=150, key="train_loader")
-            st.info("🚂 Sedang menyisir data Peralatan Dalam Sinyal Elektrik...")
+            st.info("🚂 Mencari halaman Foto Dokumentasi...")
 
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for f in uploaded_files:
@@ -55,48 +55,59 @@ if uploaded_files:
                 tgl = tgl_match.group() if tgl_match else "00-00-0000"
 
                 found_short = "LOKASI_TIDAK_TERDETEKSI"
-                asset_name = "PDSE" # Default jika peralatan dalam
+                asset_name = "ASET"
                 
                 try:
-                    # Convert minimal 2 halaman pertama
-                    images = convert_from_bytes(f.getvalue(), dpi=200, last_page=2)
+                    # Convert semua halaman (atau batasi misal 5 halaman pertama agar cepat)
+                    images = convert_from_bytes(f.getvalue(), dpi=150) 
                     
-                    # Scan Halaman 1 untuk identifikasi jenis ceklis
-                    text_page_1 = pytesseract.image_to_string(images[0]).upper()
-                    
-                    # Logika Pencarian: PERALATAN DALAM SINYAL ELEKTRIK
-                    is_pdse = "PERALATAN DALAM SINYAL ELEKTRIK" in text_page_1 or "PDSE" in text_page_1
-                    
-                    # Tentukan halaman mana yang akan diambil lokasinya
-                    if is_pdse and len(images) >= 2:
-                        page_for_location = images[1] # Fokus ke Halaman 2
-                    else:
-                        page_for_location = images[0] # Fokus ke Halaman 1
+                    target_page_text = ""
+                    is_pdse = False
 
-                    # Jalankan OCR pada halaman target
-                    text_target = pytesseract.image_to_string(page_for_location).upper()
+                    # LOOP UNTUK MENCARI HALAMAN "FOTO DOKUMENTASI"
+                    for i, img in enumerate(images):
+                        current_text = pytesseract.image_to_string(img).upper()
+                        
+                        # Cek apakah ini file Peralatan Dalam
+                        if i == 0 and "PERALATAN DALAM SINYAL ELEKTRIK" in current_text:
+                            is_pdse = True
+                        
+                        # JIKA KETEMU KATA KUNCI FOTO DOKUMENTASI
+                        if "FOTO DOKUMENTASI" in current_text:
+                            target_page_text = current_text
+                            break # Berhenti mencari jika sudah ketemu
+                    
+                    # Jika tidak ketemu halaman foto, gunakan teks halaman pertama sebagai cadangan
+                    if not target_page_text:
+                        target_page_text = pytesseract.image_to_string(images[0]).upper()
 
-                    # A. DETEKSI LOKASI (Singkatan Stasiun)
-                    loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', text_target)
-                    loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB|SI|CCL|BGR)\b', text_target)
+                    # --- EKSTRAKSI DATA DARI HALAMAN TARGET ---
+                    
+                    # 1. Deteksi Lokasi
+                    loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', target_page_text)
+                    loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB|SI|CCL|BGR)\b', target_page_text)
 
                     if loc_pair: found_short = loc_pair.group()
                     elif loc_single: found_short = loc_single[0]
-                    elif "BOGOR" in text_target: found_short = "BOO"
+                    elif "BOGOR" in target_page_text: found_short = "BOO"
 
-                    # B. DETEKSI ASET
+                    # 2. Deteksi Aset
                     if not is_pdse:
-                        match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_target, re.IGNORECASE)
+                        match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', target_page_text, re.IGNORECASE)
+                        if not match_aset: # Cek halaman 1 jika di hal foto tidak ada info aset
+                            text_h1 = pytesseract.image_to_string(images[0]).upper()
+                            match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_h1, re.IGNORECASE)
+                        
                         asset_name = match_aset[0].upper().replace(".", "").replace(" ", "") if match_aset else "ASET"
                     else:
-                        # Untuk PDSE, kita bisa ambil dari nama file asli jika ada kodenya
+                        # Untuk PDSE ambil kode dari nama file asli
                         file_code = [p for p in name_only.upper().split("_") if any(c.isdigit() for c in p)]
                         asset_name = file_code[0] if file_code else "PDSE"
 
                 except:
                     continue
 
-                # Gabungkan Nama
+                # Penamaan Akhir
                 prefix = "PDSE" if is_pdse else "PERAWATAN"
                 new_name = f"{prefix} {asset_name} {found_short} {tgl}.pdf"
                 
