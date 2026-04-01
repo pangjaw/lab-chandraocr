@@ -22,7 +22,7 @@ def load_lottiefile(filepath: str):
         return None
 
 # Load file JSON animasi kereta
-lottie_train = load_lottiefile("train_loading.json")
+lottie_train = load_lottiefile("Metro Rail.json")
 
 # --- 2. TAMPILAN UTAMA ---
 st.set_page_config(page_title="Ganti Nama File Ceklis Sintelis", page_icon="📑", layout="wide")
