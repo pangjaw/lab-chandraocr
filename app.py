@@ -14,7 +14,6 @@ from google.cloud import firestore
 from google.oauth2 import service_account
 
 # --- 1. KONFIGURASI OCR (TESSERACT) ---
-# Jika di laptop (Windows), tentukan path exe-nya. Jika di Cloud (Linux), otomatis terdeteksi.
 if platform.system() == "Windows":
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
@@ -22,7 +21,6 @@ if platform.system() == "Windows":
 def hash_password(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
-# Koneksi Firestore
 if "firebase" in st.secrets:
     key_dict = dict(st.secrets["firebase"])
     if "private_key" in key_dict:
@@ -67,7 +65,7 @@ if not st.session_state.connected:
             st.success("Berhasil daftar! Silakan Login.")
     st.stop()
 
-# --- 4. SESSION STATE & INFO USER ---
+# --- 4. SESSION STATE ---
 user_email = st.session_state.user_email
 user_name = st.session_state.user_name
 
@@ -76,7 +74,7 @@ if 'mapping_lokasi' not in st.session_state:
 if 'temp_bulk' not in st.session_state:
     st.session_state.temp_bulk = []
 
-# --- 5. SIDEBAR (NAVIGASI & DATABASE) ---
+# --- 5. SIDEBAR (KONTROL DATABASE) ---
 with st.sidebar:
     st.write(f"Halo, **{user_name}**")
     menu = st.radio("Pilih Menu:", ["📍 Kelola Lokasi", "📦 Backup & Restore"])
@@ -84,51 +82,28 @@ with st.sidebar:
 
     if menu == "📍 Kelola Lokasi":
         st.subheader("🚀 Bulk Input")
-        st.caption("Format: LOKASI,SINGKATAN (Gunakan baris baru)")
-        bulk_area = st.text_area("Paste data di sini:", height=150, placeholder="BOGOR,BOO\nDEPOK,DP")
-        
+        bulk_area = st.text_area("Paste (LOKASI,KODE):", height=150, placeholder="BOGOR,BOO\nDEPOK,DP")
         cb1, cb2 = st.columns(2)
         if cb1.button("🧐 Pratinjau", use_container_width=True):
             lines = bulk_area.strip().split('\n')
-            st.session_state.temp_bulk = []
-            for line in lines:
-                if ',' in line:
-                    k, v = line.split(',', 1)
-                    st.session_state.temp_bulk.append({"Lokasi": k.strip().upper(), "Singkatan": v.strip().upper()})
-            if st.session_state.temp_bulk:
-                st.table(pd.DataFrame(st.session_state.temp_bulk))
+            st.session_state.temp_bulk = [{"Lokasi": l.split(',')[0].strip().upper(), "Singkatan": l.split(',')[1].strip().upper()} for l in lines if ',' in l]
+            if st.session_state.temp_bulk: st.table(pd.DataFrame(st.session_state.temp_bulk))
         
         if cb2.button("💾 SIMPAN", type="primary", use_container_width=True):
             if st.session_state.temp_bulk:
-                for item in st.session_state.temp_bulk:
-                    st.session_state.mapping_lokasi[item["Lokasi"]] = item["Singkatan"]
+                for item in st.session_state.temp_bulk: st.session_state.mapping_lokasi[item["Lokasi"]] = item["Singkatan"]
                 save_user_db(user_email, st.session_state.mapping_lokasi)
                 st.session_state.temp_bulk = []
                 st.success("Tersimpan!")
                 st.rerun()
 
-        st.divider()
-        st.subheader("📊 Database Saat Ini")
-        if st.session_state.mapping_lokasi:
-            st.table(pd.DataFrame([{"Lokasi": k, "Singkatan": v} for k, v in st.session_state.mapping_lokasi.items()]))
-            with st.expander("Hapus Data"):
-                target = st.selectbox("Pilih Lokasi:", ["-- Pilih --"] + list(st.session_state.mapping_lokasi.keys()))
-                if st.button("Hapus Permanen") and target != "-- Pilih --":
-                    del st.session_state.mapping_lokasi[target]
-                    save_user_db(user_email, st.session_state.mapping_lokasi)
-                    st.rerun()
-
     elif menu == "📦 Backup & Restore":
-        st.subheader("Export/Import JSON")
         js = json.dumps(st.session_state.mapping_lokasi, indent=4)
         st.download_button("📥 Download Backup", data=js, file_name="backup.json", mime="application/json", use_container_width=True)
-        st.divider()
         up_file = st.file_uploader("Import JSON", type="json")
         if up_file:
-            data_up = json.load(up_file)
-            st.session_state.mapping_lokasi.update(data_up)
+            st.session_state.mapping_lokasi.update(json.load(up_file))
             save_user_db(user_email, st.session_state.mapping_lokasi)
-            st.success("Berhasil Import!")
             st.rerun()
 
     st.divider()
@@ -136,26 +111,27 @@ with st.sidebar:
         st.session_state.connected = False
         st.rerun()
 
-# --- 6. HALAMAN UTAMA (PROSES PDF & OCR) ---
-st.title("🚀 Pemroses Nama Ceklis Sintelis")
-selected_kode = st.selectbox("Pilih Kode Unit:", ["BPBKS1", "BPBKF1", "BPBYE1"])
-use_ocr = st.checkbox("Gunakan OCR (Auto-Detect Aset)", value=False)
-uploaded_files = st.file_uploader("Upload PDF", type="pdf", accept_multiple_files=True)
+# --- 6. HALAMAN UTAMA (FORMAT BARU) ---
+st.title("🚀 Pemroses Nama Ceklis")
+st.info("Format Baru: PERAWATAN [ASET] [LOKASI] [TANGGAL]")
+
+use_ocr = st.checkbox("Gunakan OCR (Deteksi Otomatis Nomor Aset)", value=True)
+uploaded_files = st.file_uploader("Upload PDF (Banyak sekaligus)", type="pdf", accept_multiple_files=True)
 
 if uploaded_files:
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
         for f in uploaded_files:
             name_only = os.path.splitext(f.name)[0]
+            
+            # 1. Cari Tanggal
             tgl_match = re.search(r'\d{2}-\d{2}-\d{4}', name_only)
             if not tgl_match:
                 st.warning(f"⚠️ {f.name}: Tanggal tidak ditemukan.")
                 continue
-            
             tgl = tgl_match.group()
-            tahun, bulan = tgl.split("-")[-1], int(tgl.split("-")[1])
             
-            # Deteksi Lokasi (Anti-Spasi)
+            # 2. Cari Lokasi (Anti-Spasi)
             found_short = None
             name_clean = name_only.upper().replace(" ", "")
             for k, v in st.session_state.mapping_lokasi.items():
@@ -164,38 +140,40 @@ if uploaded_files:
                     break
             
             if not found_short:
-                st.error(f"❌ {f.name}: Lokasi tidak ada di database!")
+                st.error(f"❌ {f.name}: Lokasi tidak terdaftar di database!")
                 continue
 
-            # Logika OCR untuk Aset
+            # 3. Cari Aset (OCR atau Nama File)
             assets = []
             if use_ocr:
                 try:
                     images = convert_from_bytes(f.getvalue(), dpi=200)
                     raw_text = pytesseract.image_to_string(images[0])
-                    # Regex mencari kata WESEL/SN/POLE diikuti angka
-                    ocr_match = re.findall(r'(WESEL\s?\d+|SN\d+|POLE\s?\d+)', raw_text, re.IGNORECASE)
+                    # Mencari pola WESEL/SN/POLE/RELAY dll
+                    ocr_match = re.findall(r'(WESEL\s?\d+|SN\d+|POLE\s?\d+|G\.\d+|R\.\d+)', raw_text, re.IGNORECASE)
                     if ocr_match:
                         assets = [a.replace(" ", "_").upper() for a in ocr_match]
                 except Exception as e:
-                    st.error(f"OCR Error pada {f.name}: {e}")
+                    st.error(f"OCR Error: {e}")
 
-            # Jika OCR gagal/dimatikan, pakai logika nama file lama
             if not assets:
-                clean = name_only.upper().replace(tgl, "").replace(found_short, "").strip("_ ")
-                parts = clean.split("_")
-                for p in parts:
-                    if any(char.isdigit() for char in p): assets.append(p.strip())
-            
+                # Logika fallback jika OCR gagal: ambil sisa kata di nama file
+                clean_name = name_only.upper().replace(tgl, "").replace(found_short, "").strip("_ ")
+                parts = [p for p in clean_name.split("_") if any(c.isdigit() for c in p)]
+                assets = parts if parts else []
+
+            # 4. Input Manual Jika Benar-benar Tidak Ketemu
             if not assets:
-                manual = st.text_input(f"Aset untuk {f.name}:", key=f"m_{f.name}")
-                if manual: assets = [manual.strip()]
+                manual = st.text_input(f"Aset tidak terdeteksi untuk {f.name}:", key=f"m_{f.name}")
+                if manual: assets = [manual.upper().strip()]
                 else: continue
 
-            for asset in assets:
-                new_name = f"{tahun}-{bulan}_Resor 1.21 Boo_{selected_kode}_CEKLIS_{asset}_{found_short}_{tgl}.pdf"
+            # 5. Bungkus ke ZIP dengan Nama Baru
+            for asset in list(dict.fromkeys(assets)): # Hapus duplikat
+                new_name = f"PERAWATAN {asset} {found_short} {tgl}.pdf"
                 zip_f.writestr(new_name, f.getvalue())
-                st.success(f"✅ {new_name}")
+                st.success(f"✅ Siap: {new_name}")
 
     st.divider()
-    st.download_button("📥 Download ZIP Hasil", zip_buffer.getvalue(), "Hasil_Ceklis.zip", use_container_width=True)
+    if st.button("📥 DOWNLOAD SEMUA HASIL (.ZIP)", use_container_width=True, type="primary"):
+        st.download_button("Klik di sini untuk mengunduh", zip_buffer.getvalue(), "Hasil_Ceklis_Sintelis.zip", use_container_width=True)
