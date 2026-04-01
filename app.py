@@ -5,12 +5,11 @@ import os
 import zipfile
 import platform
 import pytesseract
-import time
 from io import BytesIO
 from pdf2image import convert_from_bytes
 from streamlit_lottie import st_lottie
 
-# --- 1. KONFIGURASI & FUNGSI LOADING ---
+# --- 1. KONFIGURASI ---
 if platform.system() == "Windows":
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
@@ -18,23 +17,21 @@ def load_lottiefile(filepath: str):
     try:
         with open(filepath, "r") as f:
             return json.load(f)
-    except:
-        return None
+    except: return None
 
 lottie_train = load_lottiefile("Metro Rail.json")
 
-# --- 2. TAMPILAN UTAMA ---
+# --- 2. UI ---
 st.set_page_config(page_title="Ganti Nama File Ceklis Sintelis", page_icon="📑", layout="wide")
 st.title("📑 GANTI NAMA FILE CEKLIS SINTELIS")
 
 col1, col2 = st.columns([1, 1], gap="large")
-
 with col1:
     st.subheader("📁 Input & Setting")
     use_ocr = st.checkbox("Gunakan OCR Otomatis", value=True)
     uploaded_files = st.file_uploader("Upload PDF", type="pdf", accept_multiple_files=True)
 
-# --- 3. PROSES DATA ---
+# --- 3. LOGIKA PROSES ---
 if uploaded_files:
     zip_buffer = BytesIO()
     processed_files = []
@@ -42,10 +39,8 @@ if uploaded_files:
     with col2:
         st.subheader("📋 Hasil Proses")
         placeholder = st.empty()
-        
         with placeholder.container():
-            if lottie_train:
-                st_lottie(lottie_train, height=150, key="train_loader")
+            if lottie_train: st_lottie(lottie_train, height=150, key="train_loader")
             st.info("🚂 Sedang memproses data Sintelis...")
 
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
@@ -55,92 +50,75 @@ if uploaded_files:
                 if not tgl_match: continue
                 tgl = tgl_match.group()
 
-                assets = []
-                found_short = "LOKASI_TIDAK_TERDETEKSI"
+                final_asset = ""
+                final_loc = "LOKASI_TIDAK_TERDETEKSI"
 
-                # --- LOGIKA 1: CEKLIS PDSE (AMBIL DARI NAMA FILE ASLI) ---
-                if "PERALATAN DALAM PERSINYALAN ELEKTRIK" in name_only:
-                    assets = ["PDSE"]
-                    try:
-                        # Scan khusus untuk mencari Lokasi di halaman Foto Dokumentasi
-                        images = convert_from_bytes(f.getvalue(), dpi=150, last_page=10)
-                        target_page_text = ""
-                        for img in images:
-                            txt = pytesseract.image_to_string(img).upper()
-                            if "FOTO DOKUMENTASI" in txt:
-                                # Ambil teks hanya setelah kata FOTO DOKUMENTASI
-                                target_page_text = txt.split("FOTO DOKUMENTASI")[-1]
-                                break
-                        
-                        # Cari Nama Lokasi Utuh (Contoh: BOGOR, CILEBUT, dsb)
-                        loc_match = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s]{3,20})', target_page_text)
-                        if loc_match:
-                            found_short = loc_match.group(1).strip().split('\n')[0]
-                        else:
-                            stations = ["BOGOR", "CILEBUT", "BOJONG GEDE", "CITAYAM", "DEPOK", "MANGGARAI", "JAKARTA KOTA"]
-                            for s in stations:
-                                if s in target_page_text:
-                                    found_short = s
-                                    break
-                    except:
-                        pass
-
-                # --- LOGIKA 2: CEKLIS UTAMA (AXLE, SINYAL, WESEL) ---
-                elif any(x in name_only for x in ["AXLE", "SINYAL", "WESEL", "COUNTER"]):
-                    try:
-                        images = convert_from_bytes(f.getvalue(), dpi=300)
-                        img = images[0]
-                        width, height = img.size
-
-                        if use_ocr:
-                            # Pakai Script Lama (Crop Area Aset)
-                            left, top, right, bottom = width*0.55, height*0.05, width*0.98, height*0.55
-                            img_cropped = img.crop((left, top, right, bottom))
-                            text_aset = pytesseract.image_to_string(img_cropped)
-                            match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_aset, re.IGNORECASE)
-                            
-                            if match_aset:
-                                cleaned = [a.upper().replace(".", "").replace(" ", "") for a in match_aset]
-                                for item in cleaned:
-                                    if item not in assets: assets.append(item)
-                                assets = assets[:5]
-
-                            # Lokasi Singkatan (BOO, MRI, dll)
-                            full_text = pytesseract.image_to_string(img).upper()
-                            loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', full_text)
-                            loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB)\b', full_text)
-
-                            if loc_pair: found_short = loc_pair.group().upper()
-                            elif loc_single: found_short = loc_single[0]
-                            elif "BOGOR" in full_text: found_short = "BOO"
-                    except:
-                        continue
+                try:
+                    images = convert_from_bytes(f.getvalue(), dpi=200, last_page=5)
+                    text_h1 = pytesseract.image_to_string(images[0]).upper()
                     
-                    if not assets:
-                        assets = [p for p in name_only.split("_") if any(c.isdigit() for c in p)][:1]
+                    # --- A. LOGIKA KHUSUS SERAT OPTIK ---
+                    if "SERAT OPTIK" in name_only:
+                        final_asset = "SERAT OPTIK"
+                        otb_match = re.search(r'(OTB\s?FO|OTB)\s?(.+)', text_h1)
+                        if otb_match:
+                            final_loc = otb_match.group(0).split('\n')[0].strip()
+                        else:
+                            final_loc = "OTB_UNKNOWN"
 
-                # --- PENAMAAN FINAL ---
-                if assets:
-                    for asset in assets:
-                        new_name = f"PERAWATAN {asset} {found_short} {tgl}.pdf"
-                        zip_f.writestr(new_name, f.getvalue())
-                        processed_files.append(new_name)
+                    # --- B. LOGIKA KHUSUS PTLS & PTDS ---
+                    elif "TELEKOMUNIKASI" in name_only:
+                        final_asset = "PTLS" if "LUAR STASIUN" in name_only else "PTDS"
+                        loc_match = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s\-]{3,30})', text_h1)
+                        if loc_match: final_loc = loc_match.group(1).strip().split('\n')[0]
+
+                    # --- C. LOGIKA KHUSUS JPL ---
+                    elif "PINTU PERLINTASAN" in name_only:
+                        final_asset = "JPL"
+                        jpl_num = re.search(r'JPL\s?(\d+)', text_h1)
+                        jpl_loc = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s\-]{3,30})', text_h1)
+                        num = jpl_num.group(1) if jpl_num else ""
+                        loc = jpl_loc.group(1).strip().split('\n')[0] if jpl_loc else ""
+                        final_loc = f"{num} {loc}".strip()
+
+                    # --- D. LOGIKA CATU DAYA & CTC-CTS ---
+                    elif any(x in name_only for x in ["CATU DAYA", "CTC-CTS"]):
+                        final_asset = "CATU DAYA" if "CATU DAYA" in name_only else "CTC-CTS"
+                        loc_match = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s\-]{3,30})', text_h1)
+                        if loc_match: final_loc = loc_match.group(1).strip().split('\n')[0]
+
+                    # --- E. LOGIKA UTAMA (WESEL, SINYAL, AXLE, POINT LOCK) ---
+                    else:
+                        is_point_lock = "POINT LOCK" in name_only
+                        final_asset = "POINT LOCK" if is_point_lock else ""
+                        
+                        # OCR Crop untuk Aset (Wesel/Sinyal/Axle)
+                        width, height = images[0].size
+                        img_cropped = images[0].crop((width*0.55, height*0.05, width*0.98, height*0.55))
+                        text_crop = pytesseract.image_to_string(img_cropped).upper()
+                        
+                        asset_match = re.findall(r'(?:WESEL|SINYAL|COUNTER|W)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_crop)
+                        if asset_match:
+                            asset_code = asset_match[0].replace(".", "").replace(" ", "")
+                            final_asset = f"POINT LOCK {asset_code}" if is_point_lock else asset_code
+                        
+                        # Lokasi Singkatan (BOO, CLT, dll)
+                        loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB|BTT|CLT)\b', text_h1)
+                        if loc_single: final_loc = loc_single[0]
+
+                except: pass
+
+                # Failsafe Nama
+                if not final_asset: final_asset = "ASET"
+                new_name = f"PERAWATAN {final_asset} {final_loc} {tgl}.pdf"
+                zip_f.writestr(new_name, f.getvalue())
+                processed_files.append(new_name)
 
         placeholder.empty()
-
         if processed_files:
-            with st.container(height=250):
-                for p_file in processed_files:
-                    st.write(f"✅ `{p_file}`")
-            
-            st.download_button(
-                label="📥 DOWNLOAD HASIL (.ZIP)",
-                data=zip_buffer.getvalue(),
-                file_name="Hasil_Rename_Sintelis.zip",
-                mime="application/zip",
-                use_container_width=True,
-                type="primary"
-            )
+            with st.container(height=300):
+                for p_file in processed_files: st.write(f"✅ `{p_file}`")
+            st.download_button("📥 DOWNLOAD HASIL (.ZIP)", zip_buffer.getvalue(), "Hasil_Sintelis_Update.zip", "application/zip", use_container_width=True, type="primary")
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis KAI Utility</div>", unsafe_allow_html=True)
