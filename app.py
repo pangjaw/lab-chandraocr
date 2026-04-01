@@ -121,15 +121,71 @@ uploaded_files = st.file_uploader("Upload PDF (Banyak sekaligus)", type="pdf", a
 if uploaded_files:
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
-        for f in uploaded_files:
+       for f in uploaded_files:
             name_only = os.path.splitext(f.name)[0]
             
-            # 1. Cari Tanggal
+            # 1. CARI TANGGAL (Selalu cari dari nama file dulu)
             tgl_match = re.search(r'\d{2}-\d{2}-\d{4}', name_only)
             if not tgl_match:
                 st.warning(f"⚠️ {f.name}: Tanggal tidak ditemukan.")
                 continue
             tgl = tgl_match.group()
+
+            # --- PREPARASI GAMBAR (WAJIB ADA UNTUK OCR) ---
+            assets = []
+            found_short = None
+            
+            try:
+                # Kita buat variabel 'img' di sini agar bisa dipakai semua logika di bawahnya
+                images = convert_from_bytes(f.getvalue(), dpi=300)
+                img = images[0] 
+                width, height = img.size
+
+                if use_ocr:
+                    # --- A. LOGIKA CROP ASET (Kanan Atas) ---
+                    left, top = width * 0.55, height * 0.10
+                    right, bottom = width * 0.95, height * 0.50
+                    img_cropped = img.crop((left, top, right, bottom))
+                    
+                    text_aset = pytesseract.image_to_string(img_cropped)
+                    match_aset = re.findall(r'(?:WESEL|BLOK|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_aset, re.IGNORECASE)
+                    
+                    if match_aset:
+                        cleaned = [a.upper().replace(".", "").replace(" ", "") for a in match_aset]
+                        unique = []
+                        for item in cleaned:
+                            if item not in unique: unique.append(item)
+                        assets = unique[:5]
+
+                # --- B. LOGIKA LOKASI OTOMATIS (Menggunakan 'img') ---
+                full_text = pytesseract.image_to_string(img).upper()
+                
+                # Cari pola strip (CLT-BOO)
+                loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', full_text)
+                # Cari singkatan tunggal (BOO, CTA, dsb)
+                loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD)\b', full_text)
+
+                if loc_pair:
+                    found_short = loc_pair.group().upper()
+                elif loc_single:
+                    found_short = loc_single[0]
+                else:
+                    found_short = "LOKASI_TIDAK_TERDETEKSI"
+
+            except Exception as e:
+                st.error(f"Gagal memproses file {f.name}: {e}")
+                continue
+
+            # --- 3. EKSEKUSI PENAMAAN ---
+            if not assets:
+                # Jika OCR gagal nemu aset, coba cari manual di nama file
+                clean_name = name_only.upper().replace(tgl, "").strip("_ ")
+                assets = [p for p in clean_name.split("_") if any(c.isdigit() for c in p)][:1]
+
+            for asset in assets:
+                new_name = f"PERAWATAN {asset} {found_short} {tgl}.pdf"
+                zip_f.writestr(new_name, f.getvalue())
+                st.success(f"✅ {new_name}")
             
            # --- 2. AMBIL LOKASI OTOMATIS (Tanpa Database) ---
             full_text = pytesseract.image_to_string(img).upper()
