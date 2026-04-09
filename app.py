@@ -5,7 +5,6 @@ import os
 import zipfile
 import platform
 import pytesseract
-import time
 from io import BytesIO
 from pdf2image import convert_from_bytes
 from streamlit_lottie import st_lottie
@@ -89,7 +88,7 @@ if uploaded_files:
                     except:
                         pass
 
-                # --- LOGIKA 2: OCR BERDASARKAN TARGET (WESEL/AXLE/SINYAL) ---
+                # --- LOGIKA 2: OCR BERDASARKAN TARGET (CEPER & FULL HORIZONTAL) ---
                 elif target_keyword:
                     try:
                         images = convert_from_bytes(f.getvalue(), dpi=200, first_page=1, last_page=1)
@@ -97,12 +96,14 @@ if uploaded_files:
                         width, height = img.size
 
                         if use_ocr:
-                            # Area Crop Full Horizontal
-                            left, top, right, bottom = 0.0, height*0.07, width*1.0, height*0.45
+                            # KOORDINAT CEPER:
+                            # left=0.0 & right=width*1.0 (Full Lebar)
+                            # top=0.07 (Lewati Judul), bottom=0.20 (Berhenti di atas garis tabel)
+                            left, top, right, bottom = 0.0, height*0.07, width*1.0, height*0.20
                             img_cropped = img.crop((left, top, right, bottom))
                             
                             if debug_mode:
-                                st.image(img_cropped, caption=f"Debug {target_keyword}: {f.name}")
+                                st.image(img_cropped, caption=f"Area Scan Fokus Aset ({target_keyword})")
                                 
                             text_crop = pytesseract.image_to_string(img_cropped).upper()
                             lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
@@ -118,12 +119,12 @@ if uploaded_files:
                                     parts = clean_line.split()
                                     
                                     if len(parts) >= 2:
-                                        found_short = parts[-1] # Lokasi
+                                        found_short = parts[-1] # Lokasi (Kata paling belakang)
                                         asset_parts = [w for w in parts[:-1] if w not in noise_words]
                                         asset_full_name = " ".join(asset_parts) 
                                         
                                         if asset_full_name and asset_full_name not in assets:
-                                            # Filter panjang karakter agar tidak mengambil 'SIM' atau 'W.' saja
+                                            # Filter panjang karakter agar tidak mengambil sampah OCR
                                             if len(asset_full_name) > 3:
                                                 assets.append(asset_full_name)
                             
