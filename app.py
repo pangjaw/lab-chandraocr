@@ -93,42 +93,44 @@ if uploaded_files:
                         width, height = img.size
 
                         if use_ocr:
-                            # 1. Area crop tetap di kanan atas
-                            left, top, right, bottom = width*0.50, height*0.04, width*0.98, height*0.45
+                            # PENYESUAIAN KOORDINAT:
+                            # Nilai 'top' diubah dari 0.04 menjadi 0.09 untuk melewati judul
+                            # Nilai 'bottom' diperpendek agar lebih fokus ke area daftar aset
+                            left, top, right, bottom = width*0.50, height*0.09, width*0.98, height*0.40
+                            
                             img_cropped = img.crop((left, top, right, bottom))
                             text_crop = pytesseract.image_to_string(img_cropped).upper()
                             
                             lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                             
+                            # Script tetap menggunakan filter kata 'PERAWATAN' agar tidak dobel di nama file
+                            noise_words = ["PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN"]
+
                             for line in lines:
-                                # 2. Identifikasi berdasarkan kata kunci (tanpa merubah nama ke inisial)
                                 if any(key in line for key in ["AXLE", "COUNTER", "SINYAL", "PERAGA", "WESEL", "PENGGERAK"]):
                                     
-                                    # Bersihkan bagian ID sistem di depan (jika ada tanda titik dua)
-                                    # Contoh: "AXL11612: AXLE COUNTER ZP 112 CLT-BOO" -> "AXLE COUNTER ZP 112 CLT-BOO"
+                                    # Ambil teks setelah titik dua jika ada (AXL123: AXLE COUNTER...)
                                     clean_line = line.split(":")[-1].strip() if ":" in line else line.strip()
                                     
                                     parts = clean_line.split()
                                     if len(parts) >= 2:
-                                        # LOKASI = Kata paling terakhir (misal: CLT-BOO)
+                                        # LOKASI = Kata paling terakhir
                                         found_short = parts[-1] 
                                         
                                         # NAMA ASET = Ambil semua kata sebelum kata terakhir (Full Name)
-                                        # misal: "AXLE COUNTER ZP 112"
-                                        asset_full_name = " ".join(parts[:-1]) 
+                                        # Filter kata 'PERAWATAN' agar tidak dobel
+                                        asset_parts = [w for w in parts[:-1] if w not in noise_words]
+                                        asset_full_name = " ".join(asset_parts) 
                                         
-                                        if asset_full_name not in assets:
+                                        if asset_full_name and asset_full_name not in assets:
                                             assets.append(asset_full_name)
-                                            # found_short sudah ter-update di atas
                                             
-                            # Batasi agar nama file tidak terlalu panjang
                             assets = assets[:5]
                             
                     except Exception as e:
                         st.error(f"Gagal memproses file {f.name}: {e}")
                         continue
                     
-                    # Jika OCR gagal total, gunakan nama file asli sebagai cadangan
                     if not assets:
                         assets = [p for p in name_only.split("_") if any(c.isdigit() for c in p)][:1]
 
