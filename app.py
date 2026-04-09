@@ -51,7 +51,7 @@ if uploaded_files:
 
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for f in uploaded_files:
-                name_only = os.path.splitext(f.name)[0].upper()
+                name_only = f.name.upper()
                 
                 # Cari Tanggal (Format: DD-MM-YYYY)
                 tgl_match = re.search(r'\d{2}-\d{2}-\d{4}', name_only)
@@ -63,8 +63,17 @@ if uploaded_files:
                 assets = []
                 found_short = "LOKASI_TIDAK_TERDETEKSI"
 
-                # --- LOGIKA 1: CEKLIS PDSE ---
-                if "PERALATAN DALAM PERSINYALAN ELEKTRIK" in name_only or "PDSE" in name_only:
+                # --- PENENTUAN TARGET KEYWORD (Fokus Tunggal) ---
+                target_keyword = None
+                if any(x in name_only for x in ["WESEL", "WLSE"]):
+                    target_keyword = "WESEL"
+                elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]):
+                    target_keyword = "AXLE"
+                elif "SINYAL" in name_only:
+                    target_keyword = "SINYAL"
+
+                # --- LOGIKA 1: KHUSUS PDSE ---
+                if "PDSE" in name_only or "PERALATAN DALAM PERSINYALAN ELEKTRIK" in name_only:
                     assets = ["PDSE"]
                     try:
                         images = convert_from_bytes(f.getvalue(), dpi=150, last_page=10)
@@ -74,28 +83,26 @@ if uploaded_files:
                             if "FOTO DOKUMENTASI" in txt:
                                 target_page_text = txt.split("FOTO DOKUMENTASI")[-1]
                                 break
-                        
                         loc_match = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s]{3,20})', target_page_text)
                         if loc_match:
                             found_short = loc_match.group(1).strip().split('\n')[0]
                     except:
                         pass
 
-                # --- LOGIKA 2: AXLE, SINYAL, WESEL (FULL HORIZONTAL SCAN) ---
-                elif any(x in name_only for x in ["AXLE", "SINYAL", "WESEL", "COUNTER", "WLSE"]):
+                # --- LOGIKA 2: OCR BERDASARKAN TARGET (WESEL/AXLE/SINYAL) ---
+                elif target_keyword:
                     try:
                         images = convert_from_bytes(f.getvalue(), dpi=200, first_page=1, last_page=1)
                         img = images[0]
                         width, height = img.size
 
                         if use_ocr:
-                            # KOORDINAT FULL HORIZONTAL (Kiri ke Kanan)
-                            # top 0.07 untuk melewati judul, bottom 0.45 untuk fokus identitas
+                            # Area Crop Full Horizontal
                             left, top, right, bottom = 0.0, height*0.07, width*1.0, height*0.45
                             img_cropped = img.crop((left, top, right, bottom))
                             
                             if debug_mode:
-                                st.image(img_cropped, caption=f"Debug: Area Scan {f.name}")
+                                st.image(img_cropped, caption=f"Debug {target_keyword}: {f.name}")
                                 
                             text_crop = pytesseract.image_to_string(img_cropped).upper()
                             lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
@@ -103,35 +110,35 @@ if uploaded_files:
                             noise_words = ["PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS"]
 
                             for line in lines:
-                                # HANYA 3 KEYWORD UTAMA
-                                if any(key in line for key in ["AXLE", "WESEL", "SINYAL"]):
-                                    # Ambil teks setelah tanda titik dua jika ada
-                                    clean_line = line.split(":")[-1].strip() if ":" in line else line.strip()
+                                # HANYA proses jika baris mengandung target_keyword
+                                if target_keyword in line or (target_keyword == "AXLE" and "COUNTER" in line):
                                     
+                                    # Bersihkan teks setelah titik dua
+                                    clean_line = line.split(":")[-1].strip() if ":" in line else line.strip()
                                     parts = clean_line.split()
+                                    
                                     if len(parts) >= 2:
-                                        # Lokasi = Kata paling belakang
-                                        found_short = parts[-1] 
-                                        
-                                        # Nama Aset = Filter kata noise agar tidak dobel
+                                        found_short = parts[-1] # Lokasi
                                         asset_parts = [w for w in parts[:-1] if w not in noise_words]
                                         asset_full_name = " ".join(asset_parts) 
                                         
                                         if asset_full_name and asset_full_name not in assets:
-                                            assets.append(asset_full_name)
+                                            # Filter panjang karakter agar tidak mengambil 'SIM' atau 'W.' saja
+                                            if len(asset_full_name) > 3:
+                                                assets.append(asset_full_name)
                             
                             assets = assets[:5]
                     except Exception as e:
                         st.error(f"Error pada {f.name}: {e}")
 
-                # --- 4. PENAMAAN FINAL & ZIP ---
+                # --- 4. PENAMAAN FINAL ---
                 if assets:
                     for asset in assets:
                         new_name = f"PERAWATAN {asset} {found_short} {tgl}.pdf"
                         zip_f.writestr(new_name, f.getvalue())
                         processed_files.append(new_name)
                 else:
-                    st.error(f"❌ Tidak ada aset terdeteksi di dalam file: {f.name}")
+                    st.error(f"❌ Tidak ada aset {target_keyword if target_keyword else ''} terdeteksi di: {f.name}")
 
         placeholder.empty()
 
