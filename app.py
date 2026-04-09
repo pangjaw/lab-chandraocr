@@ -61,7 +61,7 @@ if uploaded_files:
                 tgl = tgl_match.group()
                 assets_found = []
 
-                # Penentuan Target Berdasarkan Nama File
+                # Penentuan Target
                 target_keyword = None
                 if any(x in name_only for x in ["WESEL", "WLSE"]): target_keyword = "WESEL"
                 elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): target_keyword = "AXLE"
@@ -73,7 +73,6 @@ if uploaded_files:
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
                         img = images[0]
                         width, height = img.size
-                        # Area Crop Tetap Ceper agar tidak kena tabel
                         left, top, right, bottom = 0.0, height*0.05, width*1.0, height*0.25
                         img_cropped = img.crop((left, top, right, bottom))
                         
@@ -83,7 +82,7 @@ if uploaded_files:
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
-                        # Kata yang dibuang agar tersisa Nomor Aset + Lokasi
+                        # Filter Kata Sampah
                         noise_words = [
                             "PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG",
                             "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS",
@@ -91,25 +90,29 @@ if uploaded_files:
                         ]
 
                         for line in lines:
-                            # Cek apakah baris mengandung keyword target
                             if target_keyword in line or (target_keyword == "AXLE" and "COUNTER" in line):
                                 
-                                # AMBIL TEKS SETELAH TITIK DUA (:)
+                                # Logika Singkatan Wesel Terlayan Setempat
+                                if "TERLAYAN SETEMPAT" in line:
+                                    line = line.replace("TERLAYAN SETEMPAT", "W")
+
+                                # Ambil teks setelah titik dua (:)
                                 if ":" in line:
                                     clean_part = line.split(":")[-1].strip()
                                 else:
                                     clean_part = line.strip()
 
-                                # Buang kata-kata sampah
                                 clean_part = clean_part.replace(".", " ")
                                 words = clean_part.split()
                                 final_identity_parts = [w for w in words if w not in noise_words]
                                 
                                 if final_identity_parts:
-                                    # Gabungkan sisanya (Contoh: "W31E BOO" atau "ZP12B CSK")
+                                    # Gabungkan hasil (Contoh: "W41 PRP")
                                     full_identity = " ".join(final_identity_parts)
+                                    # Hilangkan spasi antara W dan Angka jika ada (Contoh: "W 41" jadi "W41")
+                                    full_identity = re.sub(r'W\s+(\d+)', r'W\1', full_identity)
                                     
-                                    if len(full_identity) >= 3 and full_identity not in assets_found:
+                                    if len(full_identity) >= 2 and full_identity not in assets_found:
                                         assets_found.append(full_identity)
                         
                         del img, img_cropped, images
@@ -125,7 +128,6 @@ if uploaded_files:
                             processed_files.append(new_name)
                             unique_filenames.add(new_name)
                 else:
-                    # Fallback jika tidak terdeteksi
                     zip_f.writestr(f.name, f.getvalue())
                     processed_files.append(f.name)
 
