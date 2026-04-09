@@ -88,7 +88,7 @@ if uploaded_files:
                     except:
                         pass
 
-                # --- LOGIKA 2: OCR BERDASARKAN TARGET (CEPER & FULL HORIZONTAL) ---
+                # --- LOGIKA 2: OCR BERDASARKAN TARGET ---
                 elif target_keyword:
                     try:
                         images = convert_from_bytes(f.getvalue(), dpi=200, first_page=1, last_page=1)
@@ -96,9 +96,7 @@ if uploaded_files:
                         width, height = img.size
 
                         if use_ocr:
-                            # KOORDINAT CEPER:
-                            # left=0.0 & right=width*1.0 (Full Lebar)
-                            # top=0.07 (Lewati Judul), bottom=0.20 (Berhenti di atas garis tabel)
+                            # Koordinat Ceper & Lebar (Menghindari Tabel)
                             left, top, right, bottom = 0.0, height*0.07, width*1.0, height*0.20
                             img_cropped = img.crop((left, top, right, bottom))
                             
@@ -111,20 +109,22 @@ if uploaded_files:
                             noise_words = ["PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS"]
 
                             for line in lines:
-                                # HANYA proses jika baris mengandung target_keyword
                                 if target_keyword in line or (target_keyword == "AXLE" and "COUNTER" in line):
-                                    
-                                    # Bersihkan teks setelah titik dua
                                     clean_line = line.split(":")[-1].strip() if ":" in line else line.strip()
-                                    parts = clean_line.split()
                                     
+                                    # HILANGKAN TITIK agar nama file bersih
+                                    clean_line = clean_line.replace(".", " ")
+                                    
+                                    parts = clean_line.split()
                                     if len(parts) >= 2:
-                                        found_short = parts[-1] # Lokasi (Kata paling belakang)
+                                        found_short = parts[-1] 
                                         asset_parts = [w for w in parts[:-1] if w not in noise_words]
                                         asset_full_name = " ".join(asset_parts) 
                                         
+                                        # Bersihkan spasi ganda hasil replace titik tadi
+                                        asset_full_name = " ".join(asset_full_name.split())
+                                        
                                         if asset_full_name and asset_full_name not in assets:
-                                            # Filter panjang karakter agar tidak mengambil sampah OCR
                                             if len(asset_full_name) > 3:
                                                 assets.append(asset_full_name)
                             
@@ -135,7 +135,9 @@ if uploaded_files:
                 # --- 4. PENAMAAN FINAL ---
                 if assets:
                     for asset in assets:
-                        new_name = f"PERAWATAN {asset} {found_short} {tgl}.pdf"
+                        # Menghilangkan titik juga pada found_short (lokasi) jika ada
+                        loc_clean = found_short.replace(".", " ").strip()
+                        new_name = f"PERAWATAN {asset} {loc_clean} {tgl}.pdf"
                         zip_f.writestr(new_name, f.getvalue())
                         processed_files.append(new_name)
                 else:
