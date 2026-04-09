@@ -88,34 +88,47 @@ if uploaded_files:
                 # --- LOGIKA 2: CEKLIS UTAMA (AXLE, SINYAL, WESEL) ---
                 elif any(x in name_only for x in ["AXLE", "SINYAL", "WESEL", "COUNTER"]):
                     try:
-                        images = convert_from_bytes(f.getvalue(), dpi=300)
+                        images = convert_from_bytes(f.getvalue(), dpi=200, first_page=1, last_page=1)
                         img = images[0]
                         width, height = img.size
 
                         if use_ocr:
-                            # Pakai Script Lama (Crop Area Aset)
-                            left, top, right, bottom = width*0.55, height*0.05, width*0.98, height*0.55
+                            # 1. Area crop tetap di kanan atas
+                            left, top, right, bottom = width*0.50, height*0.04, width*0.98, height*0.45
                             img_cropped = img.crop((left, top, right, bottom))
-                            text_aset = pytesseract.image_to_string(img_cropped)
-                            match_aset = re.findall(r'(?:WESEL|BLOK|SINYAL|COUNTER)\s+([M|J|B|W|ZP|UB]{1,2}\.?\s?\d+[A-Z]?)', text_aset, re.IGNORECASE)
+                            text_crop = pytesseract.image_to_string(img_cropped).upper()
                             
-                            if match_aset:
-                                cleaned = [a.upper().replace(".", "").replace(" ", "") for a in match_aset]
-                                for item in cleaned:
-                                    if item not in assets: assets.append(item)
-                                assets = assets[:5]
-
-                            # Lokasi Singkatan (BOO, MRI, dll)
-                            full_text = pytesseract.image_to_string(img).upper()
-                            loc_pair = re.search(r'([A-Z]{3,4}\-[A-Z]{3,4})', full_text)
-                            loc_single = re.findall(r'\b(BOO|CTA|PSM|MRI|DP|DPB|CIT|BJD|GDD|JAKK|KPB)\b', full_text)
-
-                            if loc_pair: found_short = loc_pair.group().upper()
-                            elif loc_single: found_short = loc_single[0]
-                            elif "BOGOR" in full_text: found_short = "BOO"
-                    except:
+                            lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
+                            
+                            for line in lines:
+                                # 2. Identifikasi berdasarkan kata kunci (tanpa merubah nama ke inisial)
+                                if any(key in line for key in ["AXLE", "COUNTER", "SINYAL", "PERAGA", "WESEL", "PENGGERAK"]):
+                                    
+                                    # Bersihkan bagian ID sistem di depan (jika ada tanda titik dua)
+                                    # Contoh: "AXL11612: AXLE COUNTER ZP 112 CLT-BOO" -> "AXLE COUNTER ZP 112 CLT-BOO"
+                                    clean_line = line.split(":")[-1].strip() if ":" in line else line.strip()
+                                    
+                                    parts = clean_line.split()
+                                    if len(parts) >= 2:
+                                        # LOKASI = Kata paling terakhir (misal: CLT-BOO)
+                                        found_short = parts[-1] 
+                                        
+                                        # NAMA ASET = Ambil semua kata sebelum kata terakhir (Full Name)
+                                        # misal: "AXLE COUNTER ZP 112"
+                                        asset_full_name = " ".join(parts[:-1]) 
+                                        
+                                        if asset_full_name not in assets:
+                                            assets.append(asset_full_name)
+                                            # found_short sudah ter-update di atas
+                                            
+                            # Batasi agar nama file tidak terlalu panjang
+                            assets = assets[:5]
+                            
+                    except Exception as e:
+                        st.error(f"Gagal memproses file {f.name}: {e}")
                         continue
                     
+                    # Jika OCR gagal total, gunakan nama file asli sebagai cadangan
                     if not assets:
                         assets = [p for p in name_only.split("_") if any(c.isdigit() for c in p)][:1]
 
