@@ -59,36 +59,22 @@ if uploaded_files:
                 if not tgl_match: continue
                 
                 tgl = tgl_match.group()
-                assets = []
-                found_short = "LOKASI"
+                assets_found = []
 
-                # Penentuan Target
+                # Penentuan Target Berdasarkan Nama File
                 target_keyword = None
                 if any(x in name_only for x in ["WESEL", "WLSE"]): target_keyword = "WESEL"
                 elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): target_keyword = "AXLE"
                 elif "SINYAL" in name_only: target_keyword = "SINYAL"
+                elif any(x in name_only for x in ["BLOK", "ZP"]): target_keyword = "BLOK"
 
-                # Logika PDSE (Tetap)
-                if "PDSE" in name_only or "PERALATAN DALAM PERSINYALAN ELEKTRIK" in name_only:
-                    assets = ["PDSE"]
-                    try:
-                        images = convert_from_bytes(f.getvalue(), dpi=100, last_page=5)
-                        for img in images:
-                            txt = pytesseract.image_to_string(img).upper()
-                            if "FOTO DOKUMENTASI" in txt:
-                                loc_match = re.search(r'(?:LOKASI|STASIUN)\s*[:\-]?\s*([A-Z\s]{3,15})', txt)
-                                if loc_match: found_short = loc_match.group(1).strip().split('\n')[0]
-                                break
-                        del images
-                    except: pass
-
-                # Logika OCR (Hanya Kode Utama)
-                elif target_keyword and use_ocr:
+                if target_keyword and use_ocr:
                     try:
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
                         img = images[0]
                         width, height = img.size
-                        left, top, right, bottom = 0.0, height*0.07, width*1.0, height*0.20
+                        # Area Crop Tetap Ceper agar tidak kena tabel
+                        left, top, right, bottom = 0.0, height*0.05, width*1.0, height*0.25
                         img_cropped = img.crop((left, top, right, bottom))
                         
                         if debug_mode:
@@ -97,55 +83,56 @@ if uploaded_files:
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
+                        # Kata yang dibuang agar tersisa Nomor Aset + Lokasi
                         noise_words = [
-                            "PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS",
-                            "PENGGERAK", "WESEL", "ELEKTRIK", "TERLAYAN", "SETEMPAT", "TERPUSAT",
-                            "AXLE", "COUNTER", "PERAGA", "SINYAL", "SAMPEL", "NOMOR", "INTERNAL"
+                            "PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG",
+                            "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS",
+                            "PERAGA", "SINYAL", "SAMPEL", "NOMOR", "INTERNAL"
                         ]
 
                         for line in lines:
+                            # Cek apakah baris mengandung keyword target
                             if target_keyword in line or (target_keyword == "AXLE" and "COUNTER" in line):
-                                # Deteksi Lokasi (Kata Terakhir)
-                                parts_all = line.replace(".", " ").split()
-                                if parts_all:
-                                    found_short = parts_all[-1]
-
-                                # Cari Kode Utama (Contoh: ZP12B atau W31A)
-                                # Kita cari kata yang mengandung kombinasi huruf-angka atau yang bukan noise
-                                clean_line = line.split(":")[-1].replace(".", " ") if ":" in line else line.replace(".", " ")
-                                parts = clean_line.split()
                                 
-                                code_candidates = [w for w in parts if w not in noise_words and w != found_short]
-                                
-                                # Filter Tambahan: Buang kode internal yang mengandung 'AXL' di dalam teksnya
-                                # agar tidak muncul 'AXL12200'
-                                final_codes = [c for c in code_candidates if not c.startswith("AXL") or len(c) < 5]
+                                # AMBIL TEKS SETELAH TITIK DUA (:)
+                                if ":" in line:
+                                    clean_part = line.split(":")[-1].strip()
+                                else:
+                                    clean_part = line.strip()
 
-                                if final_codes:
-                                    # Ambil kode yang paling relevan (biasanya kata pertama atau kedua setelah filter)
-                                    asset_code = final_codes[0]
+                                # Buang kata-kata sampah
+                                clean_part = clean_part.replace(".", " ")
+                                words = clean_part.split()
+                                final_identity_parts = [w for w in words if w not in noise_words]
+                                
+                                if final_identity_parts:
+                                    # Gabungkan sisanya (Contoh: "W31E BOO" atau "ZP12B CSK")
+                                    full_identity = " ".join(final_identity_parts)
                                     
-                                    if len(asset_code) >= 2 and asset_code not in assets:
-                                        assets.append(asset_code)
+                                    if len(full_identity) >= 3 and full_identity not in assets_found:
+                                        assets_found.append(full_identity)
                         
                         del img, img_cropped, images
                         gc.collect() 
                     except: pass
 
                 # Penamaan Final
-                if assets:
-                    for asset in assets:
-                        loc_clean = found_short.replace(".", " ").strip()
-                        new_name = f"PERAWATAN {asset} {loc_clean} {tgl}.pdf"
+                if assets_found:
+                    for identity in assets_found:
+                        new_name = f"PERAWATAN {identity} {tgl}.pdf"
                         if new_name not in unique_filenames:
                             zip_f.writestr(new_name, f.getvalue())
                             processed_files.append(new_name)
                             unique_filenames.add(new_name)
+                else:
+                    # Fallback jika tidak terdeteksi
+                    zip_f.writestr(f.name, f.getvalue())
+                    processed_files.append(f.name)
 
         status_container.empty()
 
         if processed_files:
-            st.success(f"✅ Berhasil memproses total **{len(processed_files)}** file.")
+            st.success(f"✅ Berhasil memproses **{len(processed_files)}** file.")
             with st.container(height=300):
                 for p_file in processed_files:
                     st.write(f"📄 `{p_file}`")
