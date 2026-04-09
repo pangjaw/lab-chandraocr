@@ -82,20 +82,15 @@ if uploaded_files:
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
-                        # Filter Kata Sampah
                         noise_words = [
                             "PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG",
                             "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS",
-                            "PERAGA", "SINYAL", "SAMPEL", "NOMOR", "INTERNAL"
+                            "PERAGA", "SINYAL", "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", "SETEMPAT"
                         ]
 
                         for line in lines:
                             if target_keyword in line or (target_keyword == "AXLE" and "COUNTER" in line):
                                 
-                                # Logika Singkatan Wesel Terlayan Setempat
-                                if "TERLAYAN SETEMPAT" in line:
-                                    line = line.replace("TERLAYAN SETEMPAT", "W")
-
                                 # Ambil teks setelah titik dua (:)
                                 if ":" in line:
                                     clean_part = line.split(":")[-1].strip()
@@ -104,13 +99,25 @@ if uploaded_files:
 
                                 clean_part = clean_part.replace(".", " ")
                                 words = clean_part.split()
-                                final_identity_parts = [w for w in words if w not in noise_words]
+                                final_parts = [w for w in words if w not in noise_words]
                                 
-                                if final_identity_parts:
-                                    # Gabungkan hasil (Contoh: "W41 PRP")
-                                    full_identity = " ".join(final_identity_parts)
-                                    # Hilangkan spasi antara W dan Angka jika ada (Contoh: "W 41" jadi "W41")
-                                    full_identity = re.sub(r'W\s+(\d+)', r'W\1', full_identity)
+                                if final_parts:
+                                    # Kata pertama setelah filter dianggap sebagai Nomor Aset
+                                    asset_no = final_parts[0]
+                                    location_parts = final_parts[1:]
+                                    
+                                    # LOGIKA STANDARISASI AWALAN (Prefix)
+                                    if target_keyword == "WESEL":
+                                        if not asset_no.startswith("W"):
+                                            asset_no = f"W{asset_no}"
+                                    elif target_keyword == "AXLE":
+                                        if not asset_no.startswith("ZP"):
+                                            asset_no = f"ZP{asset_no}"
+                                    
+                                    # Gabungkan kembali: PERAWATAN [PREFIX+NOMOR] [LOKASI]
+                                    full_identity = asset_no
+                                    if location_parts:
+                                        full_identity += " " + " ".join(location_parts)
                                     
                                     if len(full_identity) >= 2 and full_identity not in assets_found:
                                         assets_found.append(full_identity)
