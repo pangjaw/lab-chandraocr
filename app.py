@@ -82,7 +82,7 @@ if uploaded_files:
                         del images
                     except: pass
 
-                # Logika OCR (Penamaan Singkat)
+                # Logika OCR (Hanya Kode Utama)
                 elif target_keyword and use_ocr:
                     try:
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
@@ -97,7 +97,6 @@ if uploaded_files:
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
-                        # Filter Kata Deskripsi (Noise)
                         noise_words = [
                             "PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS",
                             "PENGGERAK", "WESEL", "ELEKTRIK", "TERLAYAN", "SETEMPAT", "TERPUSAT",
@@ -106,20 +105,25 @@ if uploaded_files:
 
                         for line in lines:
                             if target_keyword in line or (target_keyword == "AXLE" and "COUNTER" in line):
-                                main_part = line.split(":")[0].strip() if ":" in line else line.strip()
-                                clean_line = main_part.replace(".", " ")
+                                # Deteksi Lokasi (Kata Terakhir)
+                                parts_all = line.replace(".", " ").split()
+                                if parts_all:
+                                    found_short = parts_all[-1]
+
+                                # Cari Kode Utama (Contoh: ZP12B atau W31A)
+                                # Kita cari kata yang mengandung kombinasi huruf-angka atau yang bukan noise
+                                clean_line = line.split(":")[-1].replace(".", " ") if ":" in line else line.replace(".", " ")
                                 parts = clean_line.split()
                                 
-                                # Ambil hanya Kode/Nomor Aset
-                                code_parts = [w for w in parts if w not in noise_words]
+                                code_candidates = [w for w in parts if w not in noise_words and w != found_short]
                                 
-                                if not code_parts and ":" in line:
-                                    other_parts = line.split(":")[-1].replace(".", " ").split()
-                                    code_parts = [w for w in other_parts if w not in noise_words]
-                                
-                                if code_parts:
-                                    found_short = line.split()[-1].replace(".", "").strip()
-                                    asset_code = " ".join(code_parts[:-1]) if len(code_parts) > 1 else code_parts[0]
+                                # Filter Tambahan: Buang kode internal yang mengandung 'AXL' di dalam teksnya
+                                # agar tidak muncul 'AXL12200'
+                                final_codes = [c for c in code_candidates if not c.startswith("AXL") or len(c) < 5]
+
+                                if final_codes:
+                                    # Ambil kode yang paling relevan (biasanya kata pertama atau kedua setelah filter)
+                                    asset_code = final_codes[0]
                                     
                                     if len(asset_code) >= 2 and asset_code not in assets:
                                         assets.append(asset_code)
