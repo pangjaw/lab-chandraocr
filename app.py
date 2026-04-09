@@ -38,6 +38,8 @@ with col1:
 if uploaded_files:
     zip_buffer = BytesIO()
     processed_files = []
+    # Menggunakan set untuk mencegah duplikat nama file secara keseluruhan
+    unique_filenames = set()
     
     with col2:
         st.subheader("📋 Hasil Proses")
@@ -46,7 +48,7 @@ if uploaded_files:
         with placeholder.container():
             if lottie_train:
                 st_lottie(lottie_train, height=150, key="train_loader")
-            st.info("🚂 Sedang memproses data Sintelis...")
+            st.info("🚂 Sedang memproses ceklis...")
 
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for f in uploaded_files:
@@ -62,7 +64,7 @@ if uploaded_files:
                 assets = []
                 found_short = "LOKASI_TIDAK_TERDETEKSI"
 
-                # --- PENENTUAN TARGET KEYWORD (Fokus Tunggal) ---
+                # --- PENENTUAN TARGET KEYWORD ---
                 target_keyword = None
                 if any(x in name_only for x in ["WESEL", "WLSE"]):
                     target_keyword = "WESEL"
@@ -96,7 +98,6 @@ if uploaded_files:
                         width, height = img.size
 
                         if use_ocr:
-                            # Koordinat Ceper & Lebar (Menghindari Tabel)
                             left, top, right, bottom = 0.0, height*0.07, width*1.0, height*0.20
                             img_cropped = img.crop((left, top, right, bottom))
                             
@@ -111,8 +112,6 @@ if uploaded_files:
                             for line in lines:
                                 if target_keyword in line or (target_keyword == "AXLE" and "COUNTER" in line):
                                     clean_line = line.split(":")[-1].strip() if ":" in line else line.strip()
-                                    
-                                    # HILANGKAN TITIK agar nama file bersih
                                     clean_line = clean_line.replace(".", " ")
                                     
                                     parts = clean_line.split()
@@ -120,8 +119,6 @@ if uploaded_files:
                                         found_short = parts[-1] 
                                         asset_parts = [w for w in parts[:-1] if w not in noise_words]
                                         asset_full_name = " ".join(asset_parts) 
-                                        
-                                        # Bersihkan spasi ganda hasil replace titik tadi
                                         asset_full_name = " ".join(asset_full_name.split())
                                         
                                         if asset_full_name and asset_full_name not in assets:
@@ -132,32 +129,38 @@ if uploaded_files:
                     except Exception as e:
                         st.error(f"Error pada {f.name}: {e}")
 
-                # --- 4. PENAMAAN FINAL ---
+                # --- 4. PENAMAAN FINAL & ANTI DUPLIKAT ---
                 if assets:
                     for asset in assets:
-                        # Menghilangkan titik juga pada found_short (lokasi) jika ada
                         loc_clean = found_short.replace(".", " ").strip()
                         new_name = f"PERAWATAN {asset} {loc_clean} {tgl}.pdf"
-                        zip_f.writestr(new_name, f.getvalue())
-                        processed_files.append(new_name)
+                        
+                        # Cek apakah nama file sudah pernah dibuat sebelumnya
+                        if new_name not in unique_filenames:
+                            zip_f.writestr(new_name, f.getvalue())
+                            processed_files.append(new_name)
+                            unique_filenames.add(new_name)
                 else:
                     st.error(f"❌ Tidak ada aset {target_keyword if target_keyword else ''} terdeteksi di: {f.name}")
 
         placeholder.empty()
 
         if processed_files:
+            # Tampilkan Total File
+            st.success(f"✅ Berhasil memproses total **{len(processed_files)}** file.")
+            
             with st.container(height=300):
                 for p_file in processed_files:
-                    st.write(f"✅ `{p_file}`")
+                    st.write(f"📄 `{p_file}`")
             
             st.download_button(
-                label="📥 DOWNLOAD HASIL (.ZIP)",
+                label=f"📥 DOWNLOAD {len(processed_files)} HASIL (.ZIP)",
                 data=zip_buffer.getvalue(),
-                file_name="Hasil_Rename_Sintelis.zip",
+                file_name="Hasil_Rename_Sintelis_BOO.zip",
                 mime="application/zip",
                 use_container_width=True,
                 type="primary"
             )
 
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis KAI Utility</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis 1.21 BOO Utility</div>", unsafe_allow_html=True)
