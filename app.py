@@ -65,8 +65,7 @@ if uploaded_files:
                 target_keyword = None
                 if any(x in name_only for x in ["WESEL", "WLSE"]): target_keyword = "WESEL"
                 elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): target_keyword = "AXLE"
-                elif "SINYAL" in name_only: target_keyword = "SINYAL"
-                elif any(x in name_only for x in ["BLOK", "ZP"]): target_keyword = "BLOK"
+                elif any(x in name_only for x in ["SINYAL", "BLOK", "ZP"]): target_keyword = "SINYAL"
 
                 if target_keyword and use_ocr:
                     try:
@@ -82,14 +81,17 @@ if uploaded_files:
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
+                        # Daftar Kata yang Dihapus (Termasuk 'BLOK')
                         noise_words = [
                             "PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG",
                             "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS",
-                            "PERAGA", "SINYAL", "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", "SETEMPAT"
+                            "PERAGA", "SINYAL", "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", 
+                            "SETEMPAT", "BLOK"
                         ]
 
                         for line in lines:
-                            if target_keyword in line or (target_keyword == "AXLE" and "COUNTER" in line):
+                            # Cek relevansi baris
+                            if any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE", "COUNTER"]):
                                 
                                 # Ambil teks setelah titik dua (:)
                                 if ":" in line:
@@ -99,22 +101,21 @@ if uploaded_files:
 
                                 clean_part = clean_part.replace(".", " ")
                                 words = clean_part.split()
+                                
+                                # Filter kata sampah (BLOK otomatis terhapus di sini)
                                 final_parts = [w for w in words if w not in noise_words]
                                 
                                 if final_parts:
-                                    # Kata pertama setelah filter dianggap sebagai Nomor Aset
                                     asset_no = final_parts[0]
                                     location_parts = final_parts[1:]
                                     
-                                    # LOGIKA STANDARISASI AWALAN (Prefix)
+                                    # Standarisasi Awalan
                                     if target_keyword == "WESEL":
-                                        if not asset_no.startswith("W"):
-                                            asset_no = f"W{asset_no}"
-                                    elif target_keyword == "AXLE":
-                                        if not asset_no.startswith("ZP"):
-                                            asset_no = f"ZP{asset_no}"
+                                        if not asset_no.startswith("W"): asset_no = f"W{asset_no}"
+                                    elif "AXLE" in name_only or "COUNTER" in name_only:
+                                        if not asset_no.startswith("ZP"): asset_no = f"ZP{asset_no}"
                                     
-                                    # Gabungkan kembali: PERAWATAN [PREFIX+NOMOR] [LOKASI]
+                                    # Gabungkan (Contoh: B 112 CLT-BOO)
                                     full_identity = asset_no
                                     if location_parts:
                                         full_identity += " " + " ".join(location_parts)
