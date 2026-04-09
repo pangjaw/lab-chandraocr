@@ -85,54 +85,38 @@ if uploaded_files:
                     except:
                         pass
 
-                # --- LOGIKA 2: CEKLIS UTAMA (AXLE, SINYAL, WESEL) ---
-                elif any(x in name_only for x in ["AXLE", "SINYAL", "WESEL", "COUNTER"]):
-                    try:
-                        images = convert_from_bytes(f.getvalue(), dpi=200, first_page=1, last_page=1)
-                        img = images[0]
-                        width, height = img.size
+               # --- LOGIKA 2: CEKLIS UTAMA (AXLE, SINYAL, WESEL) ---
+elif any(x in name_only for x in ["AXLE", "SINYAL", "WESEL", "COUNTER"]):
+    try:
+        images = convert_from_bytes(f.getvalue(), dpi=200, first_page=1, last_page=1)
+        img = images[0]
+        width, height = img.size
 
-                        if use_ocr:
-                            # PENYESUAIAN KOORDINAT:
-                            # Nilai 'top' diubah dari 0.04 menjadi 0.09 untuk melewati judul
-                            # Nilai 'bottom' diperpendek agar lebih fokus ke area daftar aset
-                            left, top, right, bottom = width*0.50, height*0.09, width*0.98, height*0.40
-                            
-                            img_cropped = img.crop((left, top, right, bottom))
-                            text_crop = pytesseract.image_to_string(img_cropped).upper()
-                            
-                            lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
-                            
-                            # Script tetap menggunakan filter kata 'PERAWATAN' agar tidak dobel di nama file
-                            noise_words = ["PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN"]
+        if use_ocr:
+            # PENYESUAIAN KOORDINAT BARU:
+            # top: diturunkan ke 0.07 (sebelumnya 0.09) agar baris atas tidak terpotong
+            # left: digeser ke 0.45 (sebelumnya 0.50) agar kode di sisi kiri (seperti W31E) ikut terbaca
+            left, top, right, bottom = width*0.45, height*0.07, width*0.98, height*0.40
+            
+            img_cropped = img.crop((left, top, right, bottom))
+            text_crop = pytesseract.image_to_string(img_cropped).upper()
+            
+            # --- Bagian sisanya tetap sama seperti script sebelumnya ---
+            lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
+            noise_words = ["PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN"]
 
-                            for line in lines:
-                                if any(key in line for key in ["AXLE", "COUNTER", "SINYAL", "PERAGA", "WESEL", "PENGGERAK"]):
-                                    
-                                    # Ambil teks setelah titik dua jika ada (AXL123: AXLE COUNTER...)
-                                    clean_line = line.split(":")[-1].strip() if ":" in line else line.strip()
-                                    
-                                    parts = clean_line.split()
-                                    if len(parts) >= 2:
-                                        # LOKASI = Kata paling terakhir
-                                        found_short = parts[-1] 
-                                        
-                                        # NAMA ASET = Ambil semua kata sebelum kata terakhir (Full Name)
-                                        # Filter kata 'PERAWATAN' agar tidak dobel
-                                        asset_parts = [w for w in parts[:-1] if w not in noise_words]
-                                        asset_full_name = " ".join(asset_parts) 
-                                        
-                                        if asset_full_name and asset_full_name not in assets:
-                                            assets.append(asset_full_name)
-                                            
-                            assets = assets[:5]
-                            
-                    except Exception as e:
-                        st.error(f"Gagal memproses file {f.name}: {e}")
-                        continue
-                    
-                    if not assets:
-                        assets = [p for p in name_only.split("_") if any(c.isdigit() for c in p)][:1]
+            for line in lines:
+                if any(key in line for key in ["AXLE", "COUNTER", "SINYAL", "PERAGA", "WESEL", "PENGGERAK"]):
+                    clean_line = line.split(":")[-1].strip() if ":" in line else line.strip()
+                    parts = clean_line.split()
+                    if len(parts) >= 2:
+                        found_short = parts[-1] 
+                        asset_parts = [w for w in parts[:-1] if w not in noise_words]
+                        asset_full_name = " ".join(asset_parts) 
+                        
+                        if asset_full_name and asset_full_name not in assets:
+                            assets.append(asset_full_name)
+            assets = assets[:5]
 
                 # --- PENAMAAN FINAL ---
                 if assets:
