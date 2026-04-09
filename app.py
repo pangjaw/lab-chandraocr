@@ -86,41 +86,58 @@ if uploaded_files:
                         pass
 
                # --- LOGIKA 2: CEKLIS UTAMA (AXLE, SINYAL, WESEL) ---
-elif any(x in name_only for x in ["AXLE", "SINYAL", "WESEL", "COUNTER"]):
-    try:
-        images = convert_from_bytes(f.getvalue(), dpi=200, first_page=1, last_page=1)
-        img = images[0]
-        width, height = img.size
+                elif any(x in name_only for x in ["AXLE", "SINYAL", "WESEL", "COUNTER"]):
+                    try:
+                        images = convert_from_bytes(f.getvalue(), dpi=200, first_page=1, last_page=1)
+                        img = images[0]
+                        width, height = img.size
 
-        if use_ocr:
-            # PENYESUAIAN KOORDINAT BARU:
-            # top: diturunkan ke 0.07 (sebelumnya 0.09) agar baris atas tidak terpotong
-            # left: digeser ke 0.45 (sebelumnya 0.50) agar kode di sisi kiri (seperti W31E) ikut terbaca
-            left, top, right, bottom = width*0.45, height*0.07, width*0.98, height*0.40
-            
-            img_cropped = img.crop((left, top, right, bottom))
-            text_crop = pytesseract.image_to_string(img_cropped).upper()
-            
-            # --- Bagian sisanya tetap sama seperti script sebelumnya ---
-            lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
-            noise_words = ["PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN"]
+                        if use_ocr:
+                            # KOORDINAT BARU: 
+                            # left 0.45 agar kode di kiri (W31E) tertangkap
+                            # top 0.07 agar baris pertama tidak terpotong namun judul terlewati
+                            left, top, right, bottom = width*0.45, height*0.07, width*0.98, height*0.40
+                            
+                            img_cropped = img.crop((left, top, right, bottom))
+                            text_crop = pytesseract.image_to_string(img_cropped).upper()
+                            
+                            lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
+                            
+                            # Filter kata agar tidak muncul double di nama file
+                            noise_words = ["PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS"]
 
-            for line in lines:
-                if any(key in line for key in ["AXLE", "COUNTER", "SINYAL", "PERAGA", "WESEL", "PENGGERAK"]):
-                    clean_line = line.split(":")[-1].strip() if ":" in line else line.strip()
-                    parts = clean_line.split()
-                    if len(parts) >= 2:
-                        found_short = parts[-1] 
-                        asset_parts = [w for w in parts[:-1] if w not in noise_words]
-                        asset_full_name = " ".join(asset_parts) 
-                        
-                        if asset_full_name and asset_full_name not in assets:
-                            assets.append(asset_full_name)
-            assets = assets[:5]
+                            for line in lines:
+                                if any(key in line for key in ["AXLE", "COUNTER", "SINYAL", "PERAGA", "WESEL", "PENGGERAK"]):
+                                    # Ambil teks setelah tanda titik dua (jika ada)
+                                    clean_line = line.split(":")[-1].strip() if ":" in line else line.strip()
+                                    
+                                    parts = clean_line.split()
+                                    if len(parts) >= 2:
+                                        # Lokasi = Kata paling belakang (contoh: BOO)
+                                        found_short = parts[-1] 
+                                        
+                                        # Nama Aset = Semua kata sebelum lokasi, dibuang kata "PERAWATAN" dkk
+                                        asset_parts = [w for w in parts[:-1] if w not in noise_words]
+                                        asset_full_name = " ".join(asset_parts) 
+                                        
+                                        if asset_full_name and asset_full_name not in assets:
+                                            assets.append(asset_full_name)
+                                            
+                            # Batasi daftar aset agar nama file tidak terlalu panjang
+                            assets = assets[:5]
+                            
+                    except Exception as e:
+                        st.error(f"Gagal memproses file {f.name}: {e}")
+                        continue
+                    
+                    # Cadangan jika OCR tidak menemukan baris aset sama sekali
+                    if not assets:
+                        assets = [p for p in name_only.split("_") if any(c.isdigit() for c in p)][:1]
 
-                # --- PENAMAAN FINAL ---
+                # --- 4. PENAMAAN FINAL & ZIP (LUAR LOGIKA IF) ---
                 if assets:
                     for asset in assets:
+                        # Format: PERAWATAN + Nama Aset (hasil filter) + Lokasi + Tanggal
                         new_name = f"PERAWATAN {asset} {found_short} {tgl}.pdf"
                         zip_f.writestr(new_name, f.getvalue())
                         processed_files.append(new_name)
