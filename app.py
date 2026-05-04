@@ -10,7 +10,7 @@ from io import BytesIO
 from pdf2image import convert_from_bytes
 from streamlit_lottie import st_lottie
 
-# --- 1. KONFIGURASI TESSERACT (Saran A) ---
+# --- 1. KONFIGURASI TESSERACT ---
 if platform.system() == "Windows":
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 else:
@@ -26,7 +26,11 @@ def load_lottiefile(filepath: str):
 
 lottie_train = load_lottiefile("Metro Rail.json")
 
-# --- 2. TAMPILAN UTAMA ---
+# --- 2. LOGIKA ADMIN MODE (Opsi 1: Query Param) ---
+# Cek apakah URL memiliki parameter ?mode=admin
+is_admin = st.query_params.get("mode") == "admin"
+
+# --- 3. TAMPILAN UTAMA ---
 st.set_page_config(page_title="Sintelis 1.21 BOO Utility", page_icon="📑", layout="wide")
 st.title("📑 GANTI NAMA FILE CEKLIS SINTELIS")
 
@@ -34,15 +38,25 @@ col1, col2 = st.columns([1, 1], gap="large")
 
 with col1:
     st.subheader("📁 Input & Setting")
-    use_ocr = st.checkbox("Gunakan OCR Otomatis", value=True)
-    debug_mode = st.checkbox("Aktifkan Layar Intip (Debug Mode)", value=False)
+    
+    # Bagian Setting hanya tampil jika mode admin aktif
+    if is_admin:
+        with st.expander("🛠️ Admin Tools", expanded=True):
+            st.info("Mode Admin Aktif: Anda dapat mengatur parameter OCR.")
+            use_ocr = st.checkbox("Gunakan OCR Otomatis", value=True)
+            debug_mode = st.checkbox("Aktifkan Layar Intip (Debug Mode)", value=False)
+    else:
+        # Default value untuk user biasa (Running silent)
+        use_ocr = True
+        debug_mode = False
+
     uploaded_files = st.file_uploader("Upload PDF", type="pdf", accept_multiple_files=True)
 
-# --- 3. PROSES DATA ---
+# --- 4. PROSES DATA ---
 if uploaded_files:
     zip_buffer = BytesIO()
     processed_files = []
-    duplicate_errors = [] # (Saran D: Penampung error duplikat)
+    duplicate_errors = [] # Penampung peringatan & duplikat
     unique_filenames = set() 
     
     with col2:
@@ -62,13 +76,13 @@ if uploaded_files:
                 tgl_match = re.search(r'\d{2}-\d{2}-\d{4}', name_only)
                 
                 if not tgl_match:
-                    duplicate_errors.append(f"⚠️ Skip: File `{f.name}` tidak memiliki format tanggal (DD-MM-YYYY).")
+                    duplicate_errors.append(f"⚠️ Skip: File `{f.name}` tidak memiliki format tanggal (DD-MM-YYYY) di nama file aslinya.")
                     continue
                 
                 tgl = tgl_match.group()
                 assets_found = []
 
-                # Penentuan Target
+                # Penentuan Target Berdasarkan Nama File
                 target_keyword = None
                 if any(x in name_only for x in ["WESEL", "WLSE"]): target_keyword = "WESEL"
                 elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): target_keyword = "AXLE"
@@ -76,11 +90,12 @@ if uploaded_files:
 
                 if target_keyword and use_ocr:
                     try:
-                        # (Saran B: DPI 150 cukup, convert ke Grayscale 'L' untuk akurasi)
+                        # Optimasi: Convert ke Grayscale 'L' untuk akurasi Tesseract
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
                         img = images[0].convert('L') 
                         
                         width, height = img.size
+                        # Area Crop (Bagian header formulir)
                         left, top, right, bottom = 0.0, height*0.05, width*1.0, height*0.25
                         img_cropped = img.crop((left, top, right, bottom))
                         
@@ -109,6 +124,7 @@ if uploaded_files:
                                     asset_no = final_parts[0]
                                     location_parts = final_parts[1:]
                                     
+                                    # Standarisasi Awalan ID
                                     if target_keyword == "WESEL" and not asset_no.startswith("W"):
                                         asset_no = f"W{asset_no}"
                                     elif ("AXLE" in name_only or "COUNTER" in name_only) and not asset_no.startswith("ZP"):
@@ -124,10 +140,9 @@ if uploaded_files:
                         del img, img_cropped, images
                         gc.collect() 
                     except Exception as e:
-                        # (Saran C: Error handling yang lebih informatif)
                         duplicate_errors.append(f"❌ OCR Error pada `{f.name}`: {str(e)}")
 
-                # Penamaan Final & Logika Duplikat (Saran D)
+                # --- Penamaan Final & Cek Duplikat ---
                 if assets_found:
                     for identity in assets_found:
                         new_name = f"PERAWATAN {identity} {tgl}.pdf"
@@ -136,24 +151,24 @@ if uploaded_files:
                             processed_files.append(new_name)
                             unique_filenames.add(new_name)
                         else:
-                            duplicate_errors.append(f"⚠️ Gagal Rename: File `{f.name}` menghasilkan nama ganda `{new_name}`.")
+                            # Log jika terdeteksi ID Aset yang sama
+                            duplicate_errors.append(f"⚠️ Gagal Rename: File `{f.name}` memiliki ID Aset `{identity}` yang sudah diproses sebelumnya.")
                 else:
-                    # Jika gagal OCR atau keyword tidak cocok, tetap masukkan file asli
+                    # Jika gagal OCR, simpan dengan nama asli agar file tidak hilang
                     zip_f.writestr(f.name, f.getvalue())
-                    processed_files.append(f.name)
+                    processed_files.append(f"{f.name} (Gagal Identifikasi)")
 
         status_container.empty()
 
-        # Menampilkan Hasil
         if processed_files:
             st.success(f"✅ Berhasil memproses **{len(processed_files)}** file.")
             with st.container(height=300):
                 for p_file in processed_files:
                     st.write(f"📄 `{p_file}`")
             
-            # Tampilkan list error/duplikat jika ada
+            # Tampilkan list peringatan jika ada
             if duplicate_errors:
-                with st.expander("📝 Log Peringatan & Kesalahan"):
+                with st.expander("📝 Log Peringatan & Kesalahan", expanded=True):
                     for err in duplicate_errors:
                         st.warning(err)
             
