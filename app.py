@@ -126,7 +126,7 @@ if uploaded_files:
                             "PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG",
                             "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS",
                             "PERAGA", "SINYAL", "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", 
-                            "SETEMPAT", "BLOK", "MASUK", "KELUAR", "MUKA", "ULANG"
+                            "SETEMPAT", "BLOK", "MASUK", "KELUAR", "MUKA", "ULANG", "DAN", "LANGSIR", "JALAN"
                         ]
 
                         for line in lines:
