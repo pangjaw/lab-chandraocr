@@ -46,7 +46,20 @@ with col1:
         use_ocr = True
         debug_mode = False
 
-    uploaded_files = st.file_uploader("Upload PDF", type="pdf", accept_multiple_files=True)
+    # FITUR BARU: Tombol Hapus Semua File
+    if "file_uploader_key" not in st.session_state:
+        st.session_state["file_uploader_key"] = 0
+
+    if st.button("🗑️ Hapus Semua File", use_container_width=True):
+        st.session_state["file_uploader_key"] += 1
+        st.rerun()
+
+    uploaded_files = st.file_uploader(
+        "Upload PDF", 
+        type="pdf", 
+        accept_multiple_files=True, 
+        key=f"uploader_{st.session_state['file_uploader_key']}"
+    )
 
 # --- 4. PROSES DATA ---
 if uploaded_files:
@@ -99,7 +112,7 @@ if uploaded_files:
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
-                        # FILTER KEYWORD (Update: Ditambahkan 'MASUK', 'KELUAR', 'MUKA', 'ULANG')
+                        # FILTER KEYWORD: 'MASUK', 'KELUAR', 'MUKA', 'ULANG'
                         noise_words = [
                             "PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG",
                             "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS",
@@ -113,15 +126,12 @@ if uploaded_files:
                                 clean_part = clean_part.replace(".", " ")
                                 words = clean_part.split()
                                 
-                                # Logika Filter Nama Aset: Menghapus noise_words
                                 final_parts = [w for w in words if w not in noise_words]
                                 
                                 if final_parts:
-                                    # Mengambil kode aset (seperti J20, UB201, dll)
                                     asset_no = final_parts[0]
                                     location_parts = final_parts[1:]
                                     
-                                    # Standarisasi Awalan ID
                                     if target_keyword == "WESEL" and not asset_no.startswith("W"):
                                         asset_no = f"W{asset_no}"
                                     elif ("AXLE" in name_only or "COUNTER" in name_only) and not asset_no.startswith("ZP"):
@@ -129,7 +139,6 @@ if uploaded_files:
                                     
                                     full_identity = asset_no
                                     if location_parts:
-                                        # Gabungkan dengan lokasi jika ada (misal: BTT)
                                         full_identity += " " + " ".join(location_parts)
                                     
                                     if len(full_identity) >= 2 and full_identity not in assets_found:
@@ -140,10 +149,8 @@ if uploaded_files:
                     except Exception as e:
                         duplicate_errors.append(f"❌ OCR Error pada `{f.name}`: {str(e)}")
 
-                # --- Penamaan Final ---
                 if assets_found:
                     for identity in assets_found:
-                        # Menghasilkan nama: PERAWATAN J20 BTT 25-01-2026.pdf
                         new_name = f"PERAWATAN {identity} {tgl}.pdf"
                         if new_name not in unique_filenames:
                             zip_f.writestr(new_name, f.getvalue())
@@ -163,8 +170,11 @@ if uploaded_files:
                 for p_file in processed_files:
                     st.write(f"📄 `{p_file}`")
             
+            # FITUR BARU: Scrollable Log Peringatan
             if duplicate_errors:
-                with st.expander("📝 Log Peringatan & Kesalahan", expanded=True):
+                st.subheader("📝 Log Peringatan & Kesalahan")
+                # Container dengan tinggi tetap agar bisa di-scroll
+                with st.container(height=250, border=True):
                     for err in duplicate_errors:
                         st.warning(err)
             
