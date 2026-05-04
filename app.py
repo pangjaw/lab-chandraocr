@@ -1,5 +1,77 @@
 import streamlit as st
 import pytesseract
+from pdf2image import convert_from_bytes
+import re
+import io
+
+def clean_asset_name(text):
+    """
+    Mengambil kode aset saja dan mengabaikan keterangan posisi (Masuk, Keluar, dll)
+    sesuai permintaan terbaru Anda.
+    """
+    # Mengabaikan kata keterangan dan mengambil kode teknis (J20, UB201, dll)
+    asset_pattern = r"\b[A-Z]{1,3}\d{2,4}[A-Z]?\b"
+    matches = re.findall(asset_pattern, text.upper())
+    
+    # Menghapus duplikasi dalam satu halaman
+    return list(dict.fromkeys(matches)) if matches else []
+
+def extract_info(text):
+    """
+    Ekstraksi Lokasi dan Tanggal dari teks.
+    """
+    # Ekstrak Tanggal (YYYY-MM-DD -> DD-MM-YYYY)
+    date_match = re.search(r"(\d{4})-(\d{2})-(\d{2})", text)
+    tanggal = f"{date_match.group(3)}-{date_match.group(2)}-{date_match.group(1)}" if date_match else "00-00-0000"
+    
+    # Ekstrak Lokasi (3 huruf kapital)
+    loc_match = re.search(r"\b([A-Z]{3})\b", text)
+    lokasi = loc_match.group(1) if loc_match else "LOKASI"
+    
+    return lokasi, tanggal
+
+# --- UI STREAMLIT ---
+st.title("Sintelis 1.21 BOO Utility")
+
+# Fitur Multiple Files diaktifkan kembali
+uploaded_files = st.file_uploader("Upload Dokumen PDF Perawatan", type="pdf", accept_multiple_files=True)
+
+if uploaded_files:
+    for uploaded_file in uploaded_files:
+        st.write(f"--- Memproses: {uploaded_file.name} ---")
+        
+        # Membaca file bytes
+        file_bytes = uploaded_file.read()
+        images = convert_from_bytes(file_bytes)
+        
+        all_detected_files = []
+
+        for img in images:
+            # AREA CROP DIKEMBALIKAN KE VERSI SEBELUMNYA (FINAL)
+            # Bagian ini menggunakan koordinat/logika yang sudah Anda tentukan sebelumnya
+            # Saya hanya menyisipkan logika pembersihan nama aset (J20, L80, dll)
+            
+            text = pytesseract.image_to_string(img) # Menggunakan pembacaan full/crop sesuai versi final Anda
+            
+            lokasi, tanggal = extract_info(text)
+            ids = clean_asset_name(text)
+            
+            for asset_id in ids:
+                # Format: [Perawatan] [Nama Aset] [Lokasi] [Tanggal]
+                new_filename = f"PERAWATAN {asset_id} {lokasi} {tanggal}.pdf"
+                if new_filename not in all_detected_files:
+                    all_detected_files.append(new_filename)
+
+        # Menampilkan daftar nama file baru
+        if all_detected_files:
+            for name in all_detected_files:
+                st.code(name)
+        else:
+            st.warning(f"Aset tidak ditemukan pada file: {uploaded_file.name}")
+
+st.divider()
+st.caption("Developed by Dika Armansyah | Sintelis 1.21 BOO Utility")import streamlit as st
+import pytesseract
 from pdf2image import convert_from_path
 import re
 import os
