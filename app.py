@@ -10,9 +10,12 @@ from io import BytesIO
 from pdf2image import convert_from_bytes
 from streamlit_lottie import st_lottie
 
-# --- 1. KONFIGURASI TESSERACT ---
+# --- 1. KONFIGURASI TESSERACT (Saran A) ---
 if platform.system() == "Windows":
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+else:
+    # Untuk deployment di Streamlit Cloud (Linux)
+    pytesseract.pytesseract.tesseract_cmd = 'tesseract'
 
 def load_lottiefile(filepath: str):
     try:
@@ -39,6 +42,7 @@ with col1:
 if uploaded_files:
     zip_buffer = BytesIO()
     processed_files = []
+    duplicate_errors = [] # (Saran D: Penampung error duplikat)
     unique_filenames = set() 
     
     with col2:
@@ -52,11 +56,14 @@ if uploaded_files:
 
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for idx, f in enumerate(uploaded_files):
-                progress_text.info(f"🚂 Sedang memproses ceklis ke-{idx+1} dari {len(uploaded_files)}...")
+                progress_text.info(f"🚂 Memproses ceklis ke-{idx+1} dari {len(uploaded_files)}...")
                 
                 name_only = f.name.upper()
                 tgl_match = re.search(r'\d{2}-\d{2}-\d{4}', name_only)
-                if not tgl_match: continue
+                
+                if not tgl_match:
+                    duplicate_errors.append(f"⚠️ Skip: File `{f.name}` tidak memiliki format tanggal (DD-MM-YYYY).")
+                    continue
                 
                 tgl = tgl_match.group()
                 assets_found = []
@@ -69,8 +76,10 @@ if uploaded_files:
 
                 if target_keyword and use_ocr:
                     try:
+                        # (Saran B: DPI 150 cukup, convert ke Grayscale 'L' untuk akurasi)
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
-                        img = images[0]
+                        img = images[0].convert('L') 
+                        
                         width, height = img.size
                         left, top, right, bottom = 0.0, height*0.05, width*1.0, height*0.25
                         img_cropped = img.crop((left, top, right, bottom))
@@ -81,7 +90,6 @@ if uploaded_files:
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
-                        # Daftar Kata yang Dihapus (Termasuk 'BLOK')
                         noise_words = [
                             "PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG",
                             "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS",
@@ -90,32 +98,22 @@ if uploaded_files:
                         ]
 
                         for line in lines:
-                            # Cek relevansi baris
                             if any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE", "COUNTER"]):
-                                
-                                # Ambil teks setelah titik dua (:)
-                                if ":" in line:
-                                    clean_part = line.split(":")[-1].strip()
-                                else:
-                                    clean_part = line.strip()
-
+                                clean_part = line.split(":")[-1].strip() if ":" in line else line.strip()
                                 clean_part = clean_part.replace(".", " ")
                                 words = clean_part.split()
                                 
-                                # Filter kata sampah (BLOK otomatis terhapus di sini)
                                 final_parts = [w for w in words if w not in noise_words]
                                 
                                 if final_parts:
                                     asset_no = final_parts[0]
                                     location_parts = final_parts[1:]
                                     
-                                    # Standarisasi Awalan
-                                    if target_keyword == "WESEL":
-                                        if not asset_no.startswith("W"): asset_no = f"W{asset_no}"
-                                    elif "AXLE" in name_only or "COUNTER" in name_only:
-                                        if not asset_no.startswith("ZP"): asset_no = f"ZP{asset_no}"
+                                    if target_keyword == "WESEL" and not asset_no.startswith("W"):
+                                        asset_no = f"W{asset_no}"
+                                    elif ("AXLE" in name_only or "COUNTER" in name_only) and not asset_no.startswith("ZP"):
+                                        asset_no = f"ZP{asset_no}"
                                     
-                                    # Gabungkan (Contoh: B 112 CLT-BOO)
                                     full_identity = asset_no
                                     if location_parts:
                                         full_identity += " " + " ".join(location_parts)
@@ -125,9 +123,11 @@ if uploaded_files:
                         
                         del img, img_cropped, images
                         gc.collect() 
-                    except: pass
+                    except Exception as e:
+                        # (Saran C: Error handling yang lebih informatif)
+                        duplicate_errors.append(f"❌ OCR Error pada `{f.name}`: {str(e)}")
 
-                # Penamaan Final
+                # Penamaan Final & Logika Duplikat (Saran D)
                 if assets_found:
                     for identity in assets_found:
                         new_name = f"PERAWATAN {identity} {tgl}.pdf"
@@ -135,17 +135,27 @@ if uploaded_files:
                             zip_f.writestr(new_name, f.getvalue())
                             processed_files.append(new_name)
                             unique_filenames.add(new_name)
+                        else:
+                            duplicate_errors.append(f"⚠️ Gagal Rename: File `{f.name}` menghasilkan nama ganda `{new_name}`.")
                 else:
+                    # Jika gagal OCR atau keyword tidak cocok, tetap masukkan file asli
                     zip_f.writestr(f.name, f.getvalue())
                     processed_files.append(f.name)
 
         status_container.empty()
 
+        # Menampilkan Hasil
         if processed_files:
             st.success(f"✅ Berhasil memproses **{len(processed_files)}** file.")
             with st.container(height=300):
                 for p_file in processed_files:
                     st.write(f"📄 `{p_file}`")
+            
+            # Tampilkan list error/duplikat jika ada
+            if duplicate_errors:
+                with st.expander("📝 Log Peringatan & Kesalahan"):
+                    for err in duplicate_errors:
+                        st.warning(err)
             
             st.download_button(
                 label=f"📥 DOWNLOAD {len(processed_files)} HASIL (.ZIP)",
