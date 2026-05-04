@@ -39,14 +39,16 @@ with col1:
     
     if is_admin:
         with st.expander("🛠️ Admin Tools", expanded=True):
-            st.info("Mode Admin Aktif: Anda dapat mengatur parameter OCR.")
+            st.info("Mode Admin Aktif: Konfigurasi eksklusif tersedia.")
             use_ocr = st.checkbox("Gunakan OCR Otomatis", value=True)
             debug_mode = st.checkbox("Aktifkan Layar Intip (Debug Mode)", value=False)
+            # OPSI FORMAT BARU (Hanya muncul di Admin)
+            format_eksklusif = st.checkbox("Gunakan Format Eksklusif (Resor 1.21)", value=False)
     else:
         use_ocr = True
         debug_mode = False
+        format_eksklusif = False
 
-    # FITUR BARU: Tombol Hapus Semua File
     if "file_uploader_key" not in st.session_state:
         st.session_state["file_uploader_key"] = 0
 
@@ -91,10 +93,19 @@ if uploaded_files:
                 tgl = tgl_match.group()
                 assets_found = []
 
+                # Deteksi Jenis Aset & Kode Ceklis
                 target_keyword = None
-                if any(x in name_only for x in ["WESEL", "WLSE"]): target_keyword = "WESEL"
-                elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): target_keyword = "AXLE"
-                elif any(x in name_only for x in ["SINYAL", "BLOK", "ZP"]): target_keyword = "SINYAL"
+                kode_ceklis = ""
+                
+                if any(x in name_only for x in ["WESEL", "WLSE"]): 
+                    target_keyword = "WESEL"
+                    kode_ceklis = "BPBYE1"
+                elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): 
+                    target_keyword = "AXLE"
+                    kode_ceklis = "BPBYE7"
+                elif any(x in name_only for x in ["SINYAL", "BLOK", "ZP"]): 
+                    target_keyword = "SINYAL"
+                    kode_ceklis = "BPBYE3"
 
                 if target_keyword and use_ocr:
                     try:
@@ -102,7 +113,6 @@ if uploaded_files:
                         img = images[0].convert('L') 
                         
                         width, height = img.size
-                        # AREA CROP FINAL (Header formulir)
                         left, top, right, bottom = 0.0, height*0.05, width*1.0, height*0.25
                         img_cropped = img.crop((left, top, right, bottom))
                         
@@ -112,7 +122,6 @@ if uploaded_files:
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
-                        # FILTER KEYWORD: 'MASUK', 'KELUAR', 'MUKA', 'ULANG'
                         noise_words = [
                             "PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG",
                             "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS",
@@ -137,12 +146,9 @@ if uploaded_files:
                                     elif ("AXLE" in name_only or "COUNTER" in name_only) and not asset_no.startswith("ZP"):
                                         asset_no = f"ZP{asset_no}"
                                     
-                                    full_identity = asset_no
-                                    if location_parts:
-                                        full_identity += " " + " ".join(location_parts)
-                                    
-                                    if len(full_identity) >= 2 and full_identity not in assets_found:
-                                        assets_found.append(full_identity)
+                                    # Simpan data ID dan Lokasi secara terpisah
+                                    loc_id = " ".join(location_parts) if location_parts else "LOKASI"
+                                    assets_found.append({"id": asset_no, "loc": loc_id})
                         
                         del img, img_cropped, images
                         gc.collect() 
@@ -150,14 +156,24 @@ if uploaded_files:
                         duplicate_errors.append(f"❌ OCR Error pada `{f.name}`: {str(e)}")
 
                 if assets_found:
-                    for identity in assets_found:
-                        new_name = f"PERAWATAN {identity} {tgl}.pdf"
+                    for asset_data in assets_found:
+                        aid = asset_data["id"]
+                        aloc = asset_data["loc"]
+                        
+                        # LOGIKA PENAMAAN
+                        if format_eksklusif:
+                            # Format: 2026-1_Resor 1.21 Boo_[Kode]_Perawatan_[Aset]_[Lokasi]_[Tanggal]
+                            new_name = f"2026-1_Resor 1.21 Boo_{kode_ceklis}_Perawatan_{aid}_{aloc}_{tgl}.pdf"
+                        else:
+                            # Format Standar
+                            new_name = f"PERAWATAN {aid} {aloc} {tgl}.pdf"
+
                         if new_name not in unique_filenames:
                             zip_f.writestr(new_name, f.getvalue())
                             processed_files.append(new_name)
                             unique_filenames.add(new_name)
                         else:
-                            duplicate_errors.append(f"⚠️ Gagal Rename: File `{f.name}` memiliki ID Aset `{identity}` yang sudah diproses sebelumnya.")
+                            duplicate_errors.append(f"⚠️ Gagal Rename: ID `{aid}` sudah diproses.")
                 else:
                     zip_f.writestr(f.name, f.getvalue())
                     processed_files.append(f"{f.name} (Gagal Identifikasi)")
@@ -170,10 +186,8 @@ if uploaded_files:
                 for p_file in processed_files:
                     st.write(f"📄 `{p_file}`")
             
-            # FITUR BARU: Scrollable Log Peringatan
             if duplicate_errors:
                 st.subheader("📝 Log Peringatan & Kesalahan")
-                # Container dengan tinggi tetap agar bisa di-scroll
                 with st.container(height=250, border=True):
                     for err in duplicate_errors:
                         st.warning(err)
