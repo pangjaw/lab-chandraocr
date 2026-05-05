@@ -39,7 +39,7 @@ with col1:
     
     instansi = st.radio(
         "Pilih Instansi/Format Nama:",
-        ["BTP JAK (Format Standar)", "BTP BD (Format Eksklusif Resor)"],
+        ["BTP JAK (Format Universal)", "BTP BD (Format Khusus Sintel Bogor)"],
         index=0
     )
     
