@@ -39,7 +39,7 @@ with col1:
     
     instansi = st.radio(
         "Pilih Instansi/Format Nama:",
-        ["BTP JAK (Format Universal)", "BTP BD (Format Khusus Sintel Bogor)"],
+        ["BTP JAK (Format Standar)", "BTP BD (Format Khusus Sintel Boo)"],
         index=0
     )
     
@@ -69,12 +69,9 @@ with col1:
 # --- 4. PROSES DATA ---
 if uploaded_files:
     zip_buffer = BytesIO()
-    processed_files = []
-    duplicate_errors = [] 
-    unique_filenames = set() 
+    processed_files, duplicate_errors, unique_filenames = [], [], set() 
     
     with col2:
-        # Header Hasil & Tombol Download di satu baris
         head_col, btn_col = st.columns([1.5, 1])
         with head_col:
             st.subheader("📋 Hasil Proses")
@@ -90,58 +87,54 @@ if uploaded_files:
                 progress_text.info(f"🚂 Memproses {idx+1}/{len(uploaded_files)}...")
                 
                 name_only = f.name.upper()
-                tgl_match = re.search(r'\d{2}-\d{2}-\d{4}', name_only)
+                tgl_match = re.search(r'(\d{2})-(\d{2})-(\d{4})', name_only)
                 
                 if not tgl_match:
-                    duplicate_errors.append(f"❌ `{f.name}`: Format tanggal (DD-MM-YYYY) tidak ditemukan di nama file asli.")
+                    duplicate_errors.append(f"❌ `{f.name}`: Format tanggal (DD-MM-YYYY) tidak ditemukan.")
                     continue
                 
-                tgl = tgl_match.group()
-                assets_found = []
-                target_keyword = None
-                kode_ceklis = ""
+                # Mengambil komponen tanggal untuk deteksi bulan otomatis
+                tgl_full = tgl_match.group(0)
+                bln_angka = str(int(tgl_match.group(2))) # Menghilangkan leading zero (01 -> 1)
+                thn_angka = tgl_match.group(3)
                 
-                if any(x in name_only for x in ["WESEL", "WLSE"]): 
-                    target_keyword, kode_ceklis = "WESEL", "BPBYE1"
-                elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): 
-                    target_keyword, kode_ceklis = "AXLE", "BPBYE7"
-                elif any(x in name_only for x in ["SINYAL", "BLOK", "ZP"]): 
-                    target_keyword, kode_ceklis = "SINYAL", "BPBYE3"
+                # Format Prefix Dinamis (2026-1, 2026-2, dst)
+                prefix_periode = f"{thn_angka}-{bln_angka}"
+                
+                assets_found, target_keyword, kode_ceklis = [], None, ""
+                
+                if any(x in name_only for x in ["WESEL", "WLSE"]): target_keyword, kode_ceklis = "WESEL", "BPBYE1"
+                elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): target_keyword, kode_ceklis = "AXLE", "BPBYE7"
+                elif any(x in name_only for x in ["SINYAL", "BLOK", "ZP"]): target_keyword, kode_ceklis = "SINYAL", "BPBYE3"
 
                 if target_keyword:
                     try:
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
                         img = images[0].convert('L') 
                         width, height = img.size
-                        left, top, right, bottom = 0.0, height*0.05, width*1.0, height*0.25
-                        img_cropped = img.crop((left, top, right, bottom))
+                        img_cropped = img.crop((0.0, height*0.05, width*1.0, height*0.25))
                         
-                        if debug_mode:
-                            st.image(img_cropped, caption=f"Scan: {f.name}")
+                        if debug_mode: st.image(img_cropped, caption=f"Scan: {f.name}")
                             
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
-                        noise_words = ["PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG",
-                                       "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS",
-                                       "PERAGA", "SINYAL", "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", 
-                                       "SETEMPAT", "BLOK", "MASUK", "KELUAR", "MUKA", "DAN", "LANGSIR", "JALAN"]
+                        noise = ["PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG", "PENGGERAK", 
+                                 "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS", "PERAGA", "SINYAL", 
+                                 "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", "SETEMPAT", "BLOK", "MASUK", 
+                                 "KELUAR", "MUKA", "DAN", "LANGSIR", "JALAN"]
 
                         for line in lines:
                             if any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE", "COUNTER"]):
-                                clean_part = line.split(":")[-1].strip() if ":" in line else line.strip()
-                                clean_part = clean_part.replace(".", " ")
-                                words = clean_part.split()
-                                final_parts = [w for w in words if w not in noise_words]
+                                clean = line.split(":")[-1].strip() if ":" in line else line.strip()
+                                words = clean.replace(".", " ").split()
+                                final = [w for w in words if w not in noise]
                                 
-                                if final_parts:
-                                    asset_no = final_parts[0]
-                                    location_parts = final_parts[1:]
-                                    if target_keyword == "WESEL" and not asset_no.startswith("W"): asset_no = f"W{asset_no}"
-                                    elif ("AXLE" in name_only or "COUNTER" in name_only) and not asset_no.startswith("ZP"): asset_no = f"ZP{asset_no}"
-                                    
-                                    loc_id = " ".join(location_parts) if location_parts else "LOKASI"
-                                    assets_found.append({"id": asset_no, "loc": loc_id})
+                                if final:
+                                    aid, loc_id = final[0], " ".join(final[1:]) if len(final) > 1 else "LOKASI"
+                                    if target_keyword == "WESEL" and not aid.startswith("W"): aid = f"W{aid}"
+                                    elif target_keyword == "AXLE" and not aid.startswith("ZP"): aid = f"ZP{aid}"
+                                    assets_found.append({"id": aid, "loc": loc_id})
                         
                         del img, img_cropped, images
                         gc.collect() 
@@ -149,52 +142,36 @@ if uploaded_files:
                         duplicate_errors.append(f"❌ `{f.name}`: OCR Error ({str(e)})")
 
                 if assets_found:
-                    for asset_data in assets_found:
-                        aid, aloc = asset_data["id"], asset_data["loc"]
-                        if format_eksklusif:
-                            new_name = f"2026-1_Resor 1.21 Boo_{kode_ceklis}_Perawatan_{aid}_{aloc}_{tgl}.pdf"
-                        else:
-                            new_name = f"PERAWATAN {aid} {aloc} {tgl}.pdf"
+                    for asset in assets_found:
+                        aid, aloc = asset["id"], asset["loc"]
+                        # Menggunakan prefix_periode yang sudah dideteksi otomatis
+                        new_name = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_Perawatan_{aid}_{aloc}_{tgl_full}.pdf" if format_eksklusif else f"PERAWATAN {aid} {aloc} {tgl_full}.pdf"
 
                         if new_name not in unique_filenames:
                             zip_f.writestr(new_name, f.getvalue())
                             processed_files.append(new_name)
                             unique_filenames.add(new_name)
                         else:
-                            duplicate_errors.append(f"⚠️ `{f.name}`: ID `{aid}` duplikat/sudah ada.")
+                            duplicate_errors.append(f"⚠️ `{f.name}`: ID `{aid}` duplikat.")
                 else:
-                    duplicate_errors.append(f"🔍 `{f.name}`: Gagal mengidentifikasi ID Aset pada dokumen.")
+                    duplicate_errors.append(f"🔍 `{f.name}`: Gagal identifikasi ID Aset.")
 
         status_container.empty()
 
-        # Tombol Download di samping judul
         if processed_files:
             with btn_col:
-                st.download_button(
-                    label="📥 DOWNLOAD ZIP",
-                    data=zip_buffer.getvalue(),
-                    file_name="Hasil_Rename_Sintelis_BOO.zip",
-                    mime="application/zip",
-                    use_container_width=True,
-                    type="primary"
-                )
+                st.download_button(label="📥 DOWNLOAD ZIP", data=zip_buffer.getvalue(), file_name="Hasil_Rename_Sintelis_BOO.zip", mime="application/zip", use_container_width=True, type="primary")
 
-        # Expander Hasil Sukses (Atas)
         with st.expander(f"✅ Sukses Teridentifikasi ({len(processed_files)})", expanded=True):
             if processed_files:
-                for p_file in processed_files:
-                    st.write(f"📄 `{p_file}`")
-            else:
-                st.write("Belum ada file yang berhasil diproses.")
+                for p_file in processed_files: st.write(f"📄 `{p_file}`")
+            else: st.write("Belum ada file yang berhasil diproses.")
 
-        # Expander Hasil Gagal (Bawah)
         with st.expander(f"❌ Gagal Diproses ({len(duplicate_errors)})", expanded=True):
             if duplicate_errors:
                 with st.container(height=250):
-                    for err in duplicate_errors:
-                        st.warning(err)
-            else:
-                st.write("Tidak ada kendala pada file yang diunggah.")
+                    for err in duplicate_errors: st.warning(err)
+            else: st.write("Tidak ada kendala pada file.")
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis 1.21 BOO Utility</div>", unsafe_allow_html=True)
