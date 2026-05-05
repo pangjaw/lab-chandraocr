@@ -37,15 +37,12 @@ col1, col2 = st.columns([1, 1], gap="large")
 with col1:
     st.subheader("📁 Input & Setting")
     
-    # PILIHAN INSTANSI (Menentukan Format Nama)
     instansi = st.radio(
         "Pilih Instansi/Format Nama:",
         ["BTP JAK (Format Standar)", "BTP BD (Format Eksklusif Resor)"],
-        index=0,
-        help="BTP JAK menggunakan format lama. BTP BD menggunakan format baru (2026-1_...)"
+        index=0
     )
     
-    # Set flag format berdasarkan pilihan
     format_eksklusif = True if "BTP BD" in instansi else False
     
     if is_admin:
@@ -77,9 +74,12 @@ if uploaded_files:
     unique_filenames = set() 
     
     with col2:
-        st.subheader("📋 Hasil Proses")
-        status_container = st.empty()
+        # Header Hasil & Tombol Download di satu baris
+        head_col, btn_col = st.columns([1.5, 1])
+        with head_col:
+            st.subheader("📋 Hasil Proses")
         
+        status_container = st.empty()
         with status_container.container():
             if lottie_train:
                 st_lottie(lottie_train, height=150, key="train_loader")
@@ -87,37 +87,31 @@ if uploaded_files:
 
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for idx, f in enumerate(uploaded_files):
-                progress_text.info(f"🚂 Memproses ceklis ke-{idx+1} dari {len(uploaded_files)}...")
+                progress_text.info(f"🚂 Memproses {idx+1}/{len(uploaded_files)}...")
                 
                 name_only = f.name.upper()
                 tgl_match = re.search(r'\d{2}-\d{2}-\d{4}', name_only)
                 
                 if not tgl_match:
-                    duplicate_errors.append(f"⚠️ Skip: File `{f.name}` tidak memiliki format tanggal (DD-MM-YYYY) di nama file aslinya.")
+                    duplicate_errors.append(f"❌ `{f.name}`: Format tanggal (DD-MM-YYYY) tidak ditemukan di nama file asli.")
                     continue
                 
                 tgl = tgl_match.group()
                 assets_found = []
-
                 target_keyword = None
                 kode_ceklis = ""
                 
                 if any(x in name_only for x in ["WESEL", "WLSE"]): 
-                    target_keyword = "WESEL"
-                    kode_ceklis = "BPBYE1"
+                    target_keyword, kode_ceklis = "WESEL", "BPBYE1"
                 elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): 
-                    target_keyword = "AXLE"
-                    kode_ceklis = "BPBYE7"
+                    target_keyword, kode_ceklis = "AXLE", "BPBYE7"
                 elif any(x in name_only for x in ["SINYAL", "BLOK", "ZP"]): 
-                    target_keyword = "SINYAL"
-                    kode_ceklis = "BPBYE3"
+                    target_keyword, kode_ceklis = "SINYAL", "BPBYE3"
 
-                # OCR Sekarang Selalu Aktif secara default
                 if target_keyword:
                     try:
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
                         img = images[0].convert('L') 
-                        
                         width, height = img.size
                         left, top, right, bottom = 0.0, height*0.05, width*1.0, height*0.25
                         img_cropped = img.crop((left, top, right, bottom))
@@ -128,30 +122,23 @@ if uploaded_files:
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
-                        noise_words = [
-                            "PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG",
-                            "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS",
-                            "PERAGA", "SINYAL", "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", 
-                            "SETEMPAT", "BLOK", "MASUK", "KELUAR", "MUKA", "ULANG",
-                            "DAN", "LANGSIR", "JALAN"
-                        ]
+                        noise_words = ["PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG",
+                                       "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS",
+                                       "PERAGA", "SINYAL", "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", 
+                                       "SETEMPAT", "BLOK", "MASUK", "KELUAR", "MUKA", "DAN", "LANGSIR", "JALAN"]
 
                         for line in lines:
                             if any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE", "COUNTER"]):
                                 clean_part = line.split(":")[-1].strip() if ":" in line else line.strip()
                                 clean_part = clean_part.replace(".", " ")
                                 words = clean_part.split()
-                                
                                 final_parts = [w for w in words if w not in noise_words]
                                 
                                 if final_parts:
                                     asset_no = final_parts[0]
                                     location_parts = final_parts[1:]
-                                    
-                                    if target_keyword == "WESEL" and not asset_no.startswith("W"):
-                                        asset_no = f"W{asset_no}"
-                                    elif ("AXLE" in name_only or "COUNTER" in name_only) and not asset_no.startswith("ZP"):
-                                        asset_no = f"ZP{asset_no}"
+                                    if target_keyword == "WESEL" and not asset_no.startswith("W"): asset_no = f"W{asset_no}"
+                                    elif ("AXLE" in name_only or "COUNTER" in name_only) and not asset_no.startswith("ZP"): asset_no = f"ZP{asset_no}"
                                     
                                     loc_id = " ".join(location_parts) if location_parts else "LOKASI"
                                     assets_found.append({"id": asset_no, "loc": loc_id})
@@ -159,14 +146,11 @@ if uploaded_files:
                         del img, img_cropped, images
                         gc.collect() 
                     except Exception as e:
-                        duplicate_errors.append(f"❌ OCR Error pada `{f.name}`: {str(e)}")
+                        duplicate_errors.append(f"❌ `{f.name}`: OCR Error ({str(e)})")
 
                 if assets_found:
                     for asset_data in assets_found:
-                        aid = asset_data["id"]
-                        aloc = asset_data["loc"]
-                        
-                        # Logika Penamaan berdasarkan pilihan Tombol BTP JAK/BD
+                        aid, aloc = asset_data["id"], asset_data["loc"]
                         if format_eksklusif:
                             new_name = f"2026-1_Resor 1.21 Boo_{kode_ceklis}_Perawatan_{aid}_{aloc}_{tgl}.pdf"
                         else:
@@ -177,33 +161,40 @@ if uploaded_files:
                             processed_files.append(new_name)
                             unique_filenames.add(new_name)
                         else:
-                            duplicate_errors.append(f"⚠️ Gagal Rename: ID `{aid}` sudah ada.")
+                            duplicate_errors.append(f"⚠️ `{f.name}`: ID `{aid}` duplikat/sudah ada.")
                 else:
-                    zip_f.writestr(f.name, f.getvalue())
-                    processed_files.append(f"{f.name} (Gagal Identifikasi)")
+                    duplicate_errors.append(f"🔍 `{f.name}`: Gagal mengidentifikasi ID Aset pada dokumen.")
 
         status_container.empty()
 
+        # Tombol Download di samping judul
         if processed_files:
-            st.success(f"✅ Berhasil memproses **{len(processed_files)}** file.")
-            with st.container(height=300):
+            with btn_col:
+                st.download_button(
+                    label="📥 DOWNLOAD ZIP",
+                    data=zip_buffer.getvalue(),
+                    file_name="Hasil_Rename_Sintelis_BOO.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                    type="primary"
+                )
+
+        # Expander Hasil Sukses (Atas)
+        with st.expander(f"✅ Sukses Teridentifikasi ({len(processed_files)})", expanded=True):
+            if processed_files:
                 for p_file in processed_files:
                     st.write(f"📄 `{p_file}`")
-            
+            else:
+                st.write("Belum ada file yang berhasil diproses.")
+
+        # Expander Hasil Gagal (Bawah)
+        with st.expander(f"❌ Gagal Diproses ({len(duplicate_errors)})", expanded=True):
             if duplicate_errors:
-                st.subheader("📝 Log Peringatan & Kesalahan")
-                with st.container(height=250, border=True):
+                with st.container(height=250):
                     for err in duplicate_errors:
                         st.warning(err)
-            
-            st.download_button(
-                label=f"📥 DOWNLOAD {len(processed_files)} HASIL (.ZIP)",
-                data=zip_buffer.getvalue(),
-                file_name="Hasil_Rename_Sintelis_BOO.zip",
-                mime="application/zip",
-                use_container_width=True,
-                type="primary"
-            )
+            else:
+                st.write("Tidak ada kendala pada file yang diunggah.")
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis 1.21 BOO Utility</div>", unsafe_allow_html=True)
