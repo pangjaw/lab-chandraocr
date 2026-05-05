@@ -37,17 +37,23 @@ col1, col2 = st.columns([1, 1], gap="large")
 with col1:
     st.subheader("📁 Input & Setting")
     
+    # PILIHAN INSTANSI (Menentukan Format Nama)
+    instansi = st.radio(
+        "Pilih Instansi/Format Nama:",
+        ["BTP JAK (Format Standar)", "BTP BD (Format Eksklusif Resor)"],
+        index=0,
+        help="BTP JAK menggunakan format lama. BTP BD menggunakan format baru (2026-1_...)"
+    )
+    
+    # Set flag format berdasarkan pilihan
+    format_eksklusif = True if "BTP BD" in instansi else False
+    
     if is_admin:
-        with st.expander("🛠️ Admin Tools", expanded=True):
-            st.info("Mode Admin Aktif: Konfigurasi eksklusif tersedia.")
-            use_ocr = st.checkbox("Gunakan OCR Otomatis", value=True)
+        with st.expander("🛠️ Admin Debug Tools", expanded=False):
+            st.info("Mode Admin: Fitur bantuan teknis.")
             debug_mode = st.checkbox("Aktifkan Layar Intip (Debug Mode)", value=False)
-            # OPSI FORMAT BARU (Hanya muncul di Admin)
-            format_eksklusif = st.checkbox("Gunakan Format Eksklusif (Resor 1.21)", value=False)
     else:
-        use_ocr = True
         debug_mode = False
-        format_eksklusif = False
 
     if "file_uploader_key" not in st.session_state:
         st.session_state["file_uploader_key"] = 0
@@ -93,7 +99,6 @@ if uploaded_files:
                 tgl = tgl_match.group()
                 assets_found = []
 
-                # Deteksi Jenis Aset & Kode Ceklis
                 target_keyword = None
                 kode_ceklis = ""
                 
@@ -107,7 +112,8 @@ if uploaded_files:
                     target_keyword = "SINYAL"
                     kode_ceklis = "BPBYE3"
 
-                if target_keyword and use_ocr:
+                # OCR Sekarang Selalu Aktif secara default
+                if target_keyword:
                     try:
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
                         img = images[0].convert('L') 
@@ -126,7 +132,8 @@ if uploaded_files:
                             "PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG",
                             "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS",
                             "PERAGA", "SINYAL", "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", 
-                            "SETEMPAT", "BLOK", "MASUK", "KELUAR", "MUKA", "ULANG", "DAN", "LANGSIR", "JALAN"
+                            "SETEMPAT", "BLOK", "MASUK", "KELUAR", "MUKA", "ULANG",
+                            "DAN", "LANGSIR", "JALAN"
                         ]
 
                         for line in lines:
@@ -146,7 +153,6 @@ if uploaded_files:
                                     elif ("AXLE" in name_only or "COUNTER" in name_only) and not asset_no.startswith("ZP"):
                                         asset_no = f"ZP{asset_no}"
                                     
-                                    # Simpan data ID dan Lokasi secara terpisah
                                     loc_id = " ".join(location_parts) if location_parts else "LOKASI"
                                     assets_found.append({"id": asset_no, "loc": loc_id})
                         
@@ -160,12 +166,10 @@ if uploaded_files:
                         aid = asset_data["id"]
                         aloc = asset_data["loc"]
                         
-                        # LOGIKA PENAMAAN
+                        # Logika Penamaan berdasarkan pilihan Tombol BTP JAK/BD
                         if format_eksklusif:
-                            # Format: 2026-1_Resor 1.21 Boo_[Kode]_Perawatan_[Aset]_[Lokasi]_[Tanggal]
                             new_name = f"2026-1_Resor 1.21 Boo_{kode_ceklis}_Perawatan_{aid}_{aloc}_{tgl}.pdf"
                         else:
-                            # Format Standar
                             new_name = f"PERAWATAN {aid} {aloc} {tgl}.pdf"
 
                         if new_name not in unique_filenames:
@@ -173,7 +177,7 @@ if uploaded_files:
                             processed_files.append(new_name)
                             unique_filenames.add(new_name)
                         else:
-                            duplicate_errors.append(f"⚠️ Gagal Rename: ID `{aid}` sudah diproses.")
+                            duplicate_errors.append(f"⚠️ Gagal Rename: ID `{aid}` sudah ada.")
                 else:
                     zip_f.writestr(f.name, f.getvalue())
                     processed_files.append(f"{f.name} (Gagal Identifikasi)")
