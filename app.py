@@ -37,7 +37,6 @@ col1, col2 = st.columns([1, 1], gap="large")
 with col1:
     st.subheader("📁 Input & Setting")
     
-    # NEW: Pilihan Jenis Kegiatan (Pemeriksaan/Perawatan)
     jenis_kegiatan = st.radio(
         "Pilih Jenis Kegiatan:",
         ["Perawatan", "Pemeriksaan"],
@@ -45,7 +44,6 @@ with col1:
         horizontal=True
     )
     
-    # Pilihan Instansi
     instansi = st.radio(
         "Pilih Instansi/Format Nama:",
         ["BTP JAK (Format Standar)", "BTP BD (Format Khusus Sintel Boo)"],
@@ -150,8 +148,6 @@ if uploaded_files:
                 if assets_found:
                     for asset in assets_found:
                         aid, aloc = asset["id"], asset["loc"]
-                        
-                        # LOGIKA DINAMIS: Menggunakan jenis_kegiatan (Pemeriksaan/Perawatan)
                         kegiatan_label = jenis_kegiatan.upper()
                         
                         if format_eksklusif:
@@ -174,16 +170,21 @@ if uploaded_files:
             with btn_col:
                 st.download_button(label="📥 DOWNLOAD ZIP", data=zip_buffer.getvalue(), file_name="Hasil_Rename_Sintelis_BOO.zip", mime="application/zip", use_container_width=True, type="primary")
 
+        # Expander Sukses (dengan internal scroll)
         with st.expander(f"✅ Sukses Teridentifikasi ({len(processed_files)})", expanded=True):
             if processed_files:
-                for p_file in processed_files: st.write(f"📄 `{p_file}`")
-            else: st.write("Belum ada file yang berhasil diproses.")
+                with st.container(height=300):
+                    for p_file in processed_files: st.write(f"📄 `{p_file}`")
+            else:
+                st.write("Belum ada file yang berhasil diproses.")
 
+        # Expander Gagal (dengan internal scroll)
         with st.expander(f"❌ Gagal Diproses ({len(duplicate_errors)})", expanded=True):
             if duplicate_errors:
-                with st.container(height=250):
+                with st.container(height=300):
                     for err in duplicate_errors: st.warning(err)
-            else: st.write("Tidak ada kendala pada file.")
+            else:
+                st.write("Tidak ada kendala pada file.")
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis 1.21 BOO Utility</div>", unsafe_allow_html=True)
