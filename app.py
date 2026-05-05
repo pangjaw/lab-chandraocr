@@ -170,18 +170,18 @@ if uploaded_files:
             with btn_col:
                 st.download_button(label="📥 DOWNLOAD ZIP", data=zip_buffer.getvalue(), file_name="Hasil_Rename_Sintelis_BOO.zip", mime="application/zip", use_container_width=True, type="primary")
 
-        # Expander Sukses (dengan internal scroll)
+        # Expander Sukses (Tinggi Fixed 150px)
         with st.expander(f"✅ Sukses Teridentifikasi ({len(processed_files)})", expanded=True):
             if processed_files:
-                with st.container(height=300):
+                with st.container(height=150):
                     for p_file in processed_files: st.write(f"📄 `{p_file}`")
             else:
                 st.write("Belum ada file yang berhasil diproses.")
 
-        # Expander Gagal (dengan internal scroll)
+        # Expander Gagal (Tinggi Fixed 150px)
         with st.expander(f"❌ Gagal Diproses ({len(duplicate_errors)})", expanded=True):
             if duplicate_errors:
-                with st.container(height=300):
+                with st.container(height=150):
                     for err in duplicate_errors: st.warning(err)
             else:
                 st.write("Tidak ada kendala pada file.")
