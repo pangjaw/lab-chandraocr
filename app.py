@@ -37,6 +37,15 @@ col1, col2 = st.columns([1, 1], gap="large")
 with col1:
     st.subheader("📁 Input & Setting")
     
+    # NEW: Pilihan Jenis Kegiatan (Pemeriksaan/Perawatan)
+    jenis_kegiatan = st.radio(
+        "Pilih Jenis Kegiatan:",
+        ["Perawatan", "Pemeriksaan"],
+        index=0,
+        horizontal=True
+    )
+    
+    # Pilihan Instansi
     instansi = st.radio(
         "Pilih Instansi/Format Nama:",
         ["BTP JAK (Format Standar)", "BTP BD (Format Khusus Sintel Boo)"],
@@ -93,12 +102,9 @@ if uploaded_files:
                     duplicate_errors.append(f"❌ `{f.name}`: Format tanggal (DD-MM-YYYY) tidak ditemukan.")
                     continue
                 
-                # Mengambil komponen tanggal untuk deteksi bulan otomatis
                 tgl_full = tgl_match.group(0)
-                bln_angka = str(int(tgl_match.group(2))) # Menghilangkan leading zero (01 -> 1)
+                bln_angka = str(int(tgl_match.group(2)))
                 thn_angka = tgl_match.group(3)
-                
-                # Format Prefix Dinamis (2026-1, 2026-2, dst)
                 prefix_periode = f"{thn_angka}-{bln_angka}"
                 
                 assets_found, target_keyword, kode_ceklis = [], None, ""
@@ -119,10 +125,10 @@ if uploaded_files:
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
-                        noise = ["PERAWATAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG", "PENGGERAK", 
-                                 "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS", "PERAGA", "SINYAL", 
-                                 "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", "SETEMPAT", "BLOK", "MASUK", 
-                                 "KELUAR", "MUKA", "DAN", "LANGSIR", "JALAN"]
+                        noise = ["PERAWATAN", "PEMERIKSAAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG", 
+                                 "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS", "PERAGA", 
+                                 "SINYAL", "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", "SETEMPAT", "BLOK", 
+                                 "MASUK", "KELUAR", "MUKA", "DAN", "LANGSIR", "JALAN"]
 
                         for line in lines:
                             if any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE", "COUNTER"]):
@@ -144,8 +150,14 @@ if uploaded_files:
                 if assets_found:
                     for asset in assets_found:
                         aid, aloc = asset["id"], asset["loc"]
-                        # Menggunakan prefix_periode yang sudah dideteksi otomatis
-                        new_name = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_Perawatan_{aid}_{aloc}_{tgl_full}.pdf" if format_eksklusif else f"PERAWATAN {aid} {aloc} {tgl_full}.pdf"
+                        
+                        # LOGIKA DINAMIS: Menggunakan jenis_kegiatan (Pemeriksaan/Perawatan)
+                        kegiatan_label = jenis_kegiatan.upper()
+                        
+                        if format_eksklusif:
+                            new_name = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_{jenis_kegiatan}_{aid}_{aloc}_{tgl_full}.pdf"
+                        else:
+                            new_name = f"{kegiatan_label} {aid} {aloc} {tgl_full}.pdf"
 
                         if new_name not in unique_filenames:
                             zip_f.writestr(new_name, f.getvalue())
