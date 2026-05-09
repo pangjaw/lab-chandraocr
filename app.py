@@ -86,7 +86,7 @@ if uploaded_files:
                 
                 assets_found, target_keyword, kode_ceklis = [], None, ""
                 
-                # --- JALUR A: OCR (Wesel, Sinyal, Axle, Serat Optik/OTB) ---
+                # --- JALUR A: OCR (Wesel, Sinyal, Axle, OTB) ---
                 if any(x in name_orig for x in ["WESEL", "WLSE"]): target_keyword, kode_ceklis = "WESEL", "BPBYE1"
                 elif any(x in name_orig for x in ["AXLE", "COUNTER", "AXL"]): target_keyword, kode_ceklis = "AXLE", "BPBYE7"
                 elif any(x in name_orig for x in ["SINYAL", "BLOK", "ZP"]): target_keyword, kode_ceklis = "SINYAL", "BPBYE3"
@@ -96,8 +96,13 @@ if uploaded_files:
                     try:
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
                         img = images[0].convert('L')
-                        # Crop lebih luas untuk OTB
-                        crop_h = 0.45 if target_keyword == "OTB" else 0.25
+                        
+                        # Area Crop Dinamis untuk OTB
+                        if target_keyword == "OTB":
+                            crop_h = 0.25 if "JPL" in name_orig else 0.45
+                        else:
+                            crop_h = 0.25
+                            
                         img_cropped = img.crop((0.0, img.size[1]*0.05, img.size[0]*1.0, img.size[1]*crop_h))
                         
                         if debug_mode: st.image(img_cropped, caption=f"Scan: {f.name}")
@@ -107,18 +112,22 @@ if uploaded_files:
                         noise = ["PERAWATAN", "PEMERIKSAAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "WESEL", "AXLE", "COUNTER", "SINYAL", "DAN", "LANGSIR", "JALAN", "SERAT", "OPTIK"]
 
                         for line in lines:
-                            # KHUSUS OTB: Hanya proses baris yang mengandung kata OTB
                             if target_keyword == "OTB":
-                                if "OTB" in line:
+                                if line.startswith("OTB"):
                                     clean = line.split(":")[-1].strip() if ":" in line else line.strip()
                                     words = clean.replace(".", " ").split()
-                                    # Mengambil OTB + angka/nama sebagai ID, sisanya Lokasi
+                                    
                                     if len(words) >= 2:
-                                        aid = f"{words[0]} {words[1]}"
-                                        loc_id = " ".join(words[2:]) if len(words) > 2 else "LOKASI"
+                                        # Logika Tambahan: Jika ada FO, ambil 3 kata pertama sebagai ID
+                                        if words[1] == "FO" and len(words) >= 3:
+                                            aid = f"{words[0]} {words[1]} {words[2]}"
+                                            loc_id = " ".join(words[3:]) if len(words) > 3 else "LOKASI"
+                                        else:
+                                            aid = f"{words[0]} {words[1]}"
+                                            loc_id = " ".join(words[2:]) if len(words) > 2 else "LOKASI"
+                                        
                                         assets_found.append({"id": aid, "loc": loc_id})
                             
-                            # JALUR UMUM (Wesel/Sinyal/Axle)
                             elif any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE"]):
                                 clean = line.split(":")[-1].strip() if ":" in line else line.strip()
                                 words = clean.replace(".", " ").split()
@@ -132,7 +141,7 @@ if uploaded_files:
                         del img, images; gc.collect()
                     except Exception as e: duplicate_errors.append(f"❌ `{f.name}`: OCR Error ({str(e)})")
 
-                # --- JALUR B: FILENAME SCAN (Telkom Selain Serat Optik) ---
+                # --- JALUR B: FILENAME SCAN (Telkom Lainnya) ---
                 else:
                     if "PTDS" in name_orig: target_keyword, kode_ceklis = "PTDS", "BPBKS15"
                     elif "PTLS" in name_orig: target_keyword, kode_ceklis = "PTLS", "BPBKS16"
@@ -160,7 +169,6 @@ if uploaded_files:
                         else:
                             base = f"{jenis_kegiatan.upper()} {aid} {aloc} {tgl_full}"
                         
-                        # Auto-Suffix (1), (2)...
                         if base in used_names_count:
                             used_names_count[base] += 1
                             final_name = f"{base} ({used_names_count[base]}).pdf"
