@@ -43,6 +43,7 @@ with col1:
     
     if is_admin:
         with st.expander("🛠️ Admin Debug Tools", expanded=False):
+            st.info("Mode Admin: Fitur bantuan teknis.")
             debug_mode = st.checkbox("Aktifkan Layar Intip (Debug Mode)", value=False)
     else:
         debug_mode = False
@@ -97,7 +98,7 @@ if uploaded_files:
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
                         img = images[0].convert('L')
                         
-                        # Area Crop Dinamis untuk OTB
+                        # Area Crop Dinamis OTB (JPL 25%, Stasiun 45%)
                         if target_keyword == "OTB":
                             crop_h = 0.25 if "JPL" in name_orig else 0.45
                         else:
@@ -113,13 +114,14 @@ if uploaded_files:
 
                         for line in lines:
                             if target_keyword == "OTB":
-                                if line.startswith("OTB"):
-                                    clean = line.split(":")[-1].strip() if ":" in line else line.strip()
-                                    words = clean.replace(".", " ").split()
+                                if "OTB" in line:
+                                    # Hapus simbol aneh di awal baris agar startswith tidak gagal
+                                    clean_line = re.sub(r'^[^\w]+', '', line).strip()
+                                    words = clean_line.replace(".", " ").split()
                                     
-                                    if len(words) >= 2:
-                                        # Logika Tambahan: Jika ada FO, ambil 3 kata pertama sebagai ID
-                                        if words[1] == "FO" and len(words) >= 3:
+                                    if len(words) >= 2 and "OTB" in words[0]:
+                                        # Logika OTB FO
+                                        if len(words) >= 3 and words[1] == "FO":
                                             aid = f"{words[0]} {words[1]} {words[2]}"
                                             loc_id = " ".join(words[3:]) if len(words) > 3 else "LOKASI"
                                         else:
@@ -141,7 +143,7 @@ if uploaded_files:
                         del img, images; gc.collect()
                     except Exception as e: duplicate_errors.append(f"❌ `{f.name}`: OCR Error ({str(e)})")
 
-                # --- JALUR B: FILENAME SCAN (Telkom Lainnya) ---
+                # --- JALUR B: FILENAME SCAN (PTDS, PTLS, PTPP, WS, BASESTATION) ---
                 else:
                     if "PTDS" in name_orig: target_keyword, kode_ceklis = "PTDS", "BPBKS15"
                     elif "PTLS" in name_orig: target_keyword, kode_ceklis = "PTLS", "BPBKS16"
@@ -169,6 +171,7 @@ if uploaded_files:
                         else:
                             base = f"{jenis_kegiatan.upper()} {aid} {aloc} {tgl_full}"
                         
+                        # Auto-Suffix (1), (2) jika ada duplikat ID/Aset
                         if base in used_names_count:
                             used_names_count[base] += 1
                             final_name = f"{base} ({used_names_count[base]}).pdf"
