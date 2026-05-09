@@ -37,19 +37,8 @@ col1, col2 = st.columns([1, 1], gap="large")
 with col1:
     st.subheader("📁 Input & Setting")
     
-    jenis_kegiatan = st.radio(
-        "Pilih Jenis Kegiatan:",
-        ["Perawatan", "Pemeriksaan"],
-        index=0,
-        horizontal=True
-    )
-    
-    instansi = st.radio(
-        "Pilih Instansi/Format Nama:",
-        ["BTP JAK (Format Standar)", "BTP BD (Format Khusus Sintel Boo)"],
-        index=0
-    )
-    
+    jenis_kegiatan = st.radio("Pilih Jenis Kegiatan:", ["Perawatan", "Pemeriksaan"], index=0, horizontal=True)
+    instansi = st.radio("Pilih Instansi/Format Nama:", ["BTP JAK (Format Standar)", "BTP BD (Format Khusus Sintel Boo)"], index=0)
     format_eksklusif = True if "BTP BD" in instansi else False
     
     if is_admin:
@@ -66,125 +55,129 @@ with col1:
         st.session_state["file_uploader_key"] += 1
         st.rerun()
 
-    uploaded_files = st.file_uploader(
-        "Upload PDF", 
-        type="pdf", 
-        accept_multiple_files=True, 
-        key=f"uploader_{st.session_state['file_uploader_key']}"
-    )
+    uploaded_files = st.file_uploader("Upload PDF", type="pdf", accept_multiple_files=True, key=f"uploader_{st.session_state['file_uploader_key']}")
 
 # --- 4. PROSES DATA ---
 if uploaded_files:
     zip_buffer = BytesIO()
-    processed_files, duplicate_errors, unique_filenames = [], [], set() 
+    processed_files, duplicate_errors, used_names_count = [], [], {} 
     
     with col2:
         head_col, btn_col = st.columns([1.5, 1])
-        with head_col:
-            st.subheader("📋 Hasil Proses")
+        with head_col: st.subheader("📋 Hasil Proses")
         
         status_container = st.empty()
         with status_container.container():
-            if lottie_train:
-                st_lottie(lottie_train, height=150, key="train_loader")
+            if lottie_train: st_lottie(lottie_train, height=150, key="train_loader")
             progress_text = st.empty()
 
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for idx, f in enumerate(uploaded_files):
                 progress_text.info(f"🚂 Memproses {idx+1}/{len(uploaded_files)}...")
                 
-                name_only = f.name.upper()
-                tgl_match = re.search(r'(\d{2})-(\d{2})-(\d{4})', name_only)
-                
+                name_orig = f.name.upper()
+                tgl_match = re.search(r'(\d{2})-(\d{2})-(\d{4})', name_orig)
                 if not tgl_match:
-                    duplicate_errors.append(f"❌ `{f.name}`: Format tanggal (DD-MM-YYYY) tidak ditemukan.")
+                    duplicate_errors.append(f"❌ `{f.name}`: Format tanggal tidak ditemukan.")
                     continue
                 
                 tgl_full = tgl_match.group(0)
                 bln_angka = str(int(tgl_match.group(2)))
-                thn_angka = tgl_match.group(3)
-                prefix_periode = f"{thn_angka}-{bln_angka}"
+                prefix_periode = f"{tgl_match.group(3)}-{bln_angka}"
                 
                 assets_found, target_keyword, kode_ceklis = [], None, ""
                 
-                if any(x in name_only for x in ["WESEL", "WLSE"]): target_keyword, kode_ceklis = "WESEL", "BPBYE1"
-                elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): target_keyword, kode_ceklis = "AXLE", "BPBYE7"
-                elif any(x in name_only for x in ["SINYAL", "BLOK", "ZP"]): target_keyword, kode_ceklis = "SINYAL", "BPBYE3"
+                # --- JALUR A: OCR (Wesel, Sinyal, Axle, Serat Optik) ---
+                if any(x in name_orig for x in ["WESEL", "WLSE"]): target_keyword, kode_ceklis = "WESEL", "BPBYE1"
+                elif any(x in name_orig for x in ["AXLE", "COUNTER", "AXL"]): target_keyword, kode_ceklis = "AXLE", "BPBYE7"
+                elif any(x in name_orig for x in ["SINYAL", "BLOK", "ZP"]): target_keyword, kode_ceklis = "SINYAL", "BPBYE3"
+                elif any(x in name_orig for x in ["SERAT OPTIK", "OTB"]): target_keyword, kode_ceklis = "SERAT OPTIK", "BPBKF4"
 
                 if target_keyword:
                     try:
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
-                        img = images[0].convert('L') 
-                        width, height = img.size
-                        img_cropped = img.crop((0.0, height*0.05, width*1.0, height*0.25))
+                        img = images[0].convert('L')
+                        # Area Crop diperpanjang khusus Serat Optik/OTB
+                        crop_h = 0.45 if target_keyword == "SERAT OPTIK" else 0.25
+                        img_cropped = img.crop((0.0, img.size[1]*0.05, img.size[0]*1.0, img.size[1]*crop_h))
                         
                         if debug_mode: st.image(img_cropped, caption=f"Scan: {f.name}")
-                            
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
-                        noise = ["PERAWATAN", "PEMERIKSAAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG", 
-                                 "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS", "PERAGA", 
-                                 "SINYAL", "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", "SETEMPAT", "BLOK", 
-                                 "MASUK", "KELUAR", "MUKA", "DAN", "LANGSIR", "JALAN"]
+                        noise = ["PERAWATAN", "PEMERIKSAAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "WESEL", "AXLE", "COUNTER", "SINYAL", "DAN", "LANGSIR", "JALAN", "SERAT", "OPTIK", "OTB"]
 
                         for line in lines:
-                            if any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE", "COUNTER"]):
+                            if any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE", "OTB", "SERAT"]):
                                 clean = line.split(":")[-1].strip() if ":" in line else line.strip()
                                 words = clean.replace(".", " ").split()
                                 final = [w for w in words if w not in noise]
-                                
                                 if final:
                                     aid, loc_id = final[0], " ".join(final[1:]) if len(final) > 1 else "LOKASI"
                                     if target_keyword == "WESEL" and not aid.startswith("W"): aid = f"W{aid}"
                                     elif target_keyword == "AXLE" and not aid.startswith("ZP"): aid = f"ZP{aid}"
                                     assets_found.append({"id": aid, "loc": loc_id})
-                        
-                        del img, img_cropped, images
-                        gc.collect() 
-                    except Exception as e:
-                        duplicate_errors.append(f"❌ `{f.name}`: OCR Error ({str(e)})")
+                        del img, images; gc.collect()
+                    except Exception as e: duplicate_errors.append(f"❌ `{f.name}`: OCR Error ({str(e)})")
 
+                # --- JALUR B: FILENAME SCAN (Telkom Selain Serat Optik) ---
+                else:
+                    if "PTDS" in name_orig: target_keyword, kode_ceklis = "PTDS", "BPBKS15"
+                    elif "PTLS" in name_orig: target_keyword, kode_ceklis = "PTLS", "BPBKS16"
+                    elif "PTPP" in name_orig: target_keyword, kode_ceklis = "PTPP", "BPBKS17"
+                    elif "WAYSTATION" in name_orig or "WS" in name_orig:
+                        if "3 BULANAN" in name_orig: target_keyword, kode_ceklis = "RADIO WAYSTATION 3B", "BPBKS4"
+                        elif "1 TAHUNAN" in name_orig: target_keyword, kode_ceklis = "RADIO WAYSTATION 1T", "BPBKS15"
+                        elif "DIGITAL" in name_orig: target_keyword, kode_ceklis = "RADIO WAYSTATION DIGITAL", "BPBKS7"
+                    elif "BASESTATION" in name_orig:
+                        if "DIGITAL" in name_orig: target_keyword, kode_ceklis = "RADIO BASESTATION DIGITAL", "BPBKF2"
+                        elif "TAIT" in name_orig: target_keyword, kode_ceklis = "RADIO BASESTATION TAIT", "BPBKF3"
+                        else: target_keyword, kode_ceklis = "RADIO BASESTATION", "BPBKF1"
+
+                    if target_keyword:
+                        # Parsing lokasi dari nama file: ambil teks setelah nama aset dan sebelum tanggal
+                        parts = name_orig.split(target_keyword)
+                        loc_part = parts[-1].split(tgl_full)[0].strip("_ ") if len(parts) > 1 else "LOKASI"
+                        assets_found.append({"id": target_keyword, "loc": loc_part})
+
+                # --- PENYUSUNAN NAMA FILE ---
                 if assets_found:
                     for asset in assets_found:
                         aid, aloc = asset["id"], asset["loc"]
-                        kegiatan_label = jenis_kegiatan.upper()
-                        
+                        keg = jenis_kegiatan.upper()
                         if format_eksklusif:
-                            new_name = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_{jenis_kegiatan}_{aid}_{aloc}_{tgl_full}.pdf"
+                            base = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_{jenis_kegiatan}_{aid}_{aloc}_{tgl_full}"
                         else:
-                            new_name = f"{kegiatan_label} {aid} {aloc} {tgl_full}.pdf"
+                            base = f"{keg} {aid} {aloc} {tgl_full}"
+                        
+                        # Auto-Suffix (1), (2)...
+                        if base in used_names_count:
+                            used_names_count[base] += 1
+                            final_name = f"{base} ({used_names_count[base]}).pdf"
+                        else:
+                            used_names_count[base] = 0
+                            final_name = f"{base}.pdf"
 
-                        if new_name not in unique_filenames:
-                            zip_f.writestr(new_name, f.getvalue())
-                            processed_files.append(new_name)
-                            unique_filenames.add(new_name)
-                        else:
-                            duplicate_errors.append(f"⚠️ `{f.name}`: ID `{aid}` duplikat.")
+                        zip_f.writestr(final_name, f.getvalue())
+                        processed_files.append(final_name)
                 else:
-                    duplicate_errors.append(f"🔍 `{f.name}`: Gagal identifikasi ID Aset.")
+                    duplicate_errors.append(f"🔍 `{f.name}`: Gagal identifikasi aset.")
 
         status_container.empty()
-
         if processed_files:
-            with btn_col:
-                st.download_button(label="📥 DOWNLOAD ZIP", data=zip_buffer.getvalue(), file_name="Hasil_Rename_Sintelis_BOO.zip", mime="application/zip", use_container_width=True, type="primary")
+            with btn_col: st.download_button(label="📥 DOWNLOAD ZIP", data=zip_buffer.getvalue(), file_name="Hasil_Rename_Sintelis_BOO.zip", mime="application/zip", use_container_width=True, type="primary")
 
-        # Expander Sukses (Tinggi Fixed 150px)
         with st.expander(f"✅ Sukses Teridentifikasi ({len(processed_files)})", expanded=True):
             if processed_files:
                 with st.container(height=150):
                     for p_file in processed_files: st.write(f"📄 `{p_file}`")
-            else:
-                st.write("Belum ada file yang berhasil diproses.")
+            else: st.write("Belum ada file sukses.")
 
-        # Expander Gagal (Tinggi Fixed 150px)
         with st.expander(f"❌ Gagal Diproses ({len(duplicate_errors)})", expanded=True):
             if duplicate_errors:
                 with st.container(height=150):
                     for err in duplicate_errors: st.warning(err)
-            else:
-                st.write("Tidak ada kendala pada file.")
+            else: st.write("Tidak ada kendala.")
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis 1.21 BOO Utility</div>", unsafe_allow_html=True)
