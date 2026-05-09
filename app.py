@@ -43,7 +43,6 @@ with col1:
     
     if is_admin:
         with st.expander("🛠️ Admin Debug Tools", expanded=False):
-            st.info("Mode Admin: Fitur bantuan teknis.")
             debug_mode = st.checkbox("Aktifkan Layar Intip (Debug Mode)", value=False)
     else:
         debug_mode = False
@@ -73,7 +72,7 @@ if uploaded_files:
 
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for idx, f in enumerate(uploaded_files):
-                progress_text.info(f"🚂 Memproses {idx+1}/{len(uploaded_files)}...")
+                progress_text.info(f"Memproses {idx+1}/{len(uploaded_files)}...")
                 
                 name_orig = f.name.upper()
                 tgl_match = re.search(r'(\d{2})-(\d{2})-(\d{4})', name_orig)
@@ -87,82 +86,83 @@ if uploaded_files:
                 
                 assets_found, target_keyword, kode_ceklis = [], None, ""
                 
-                # --- JALUR A: OCR (Wesel, Sinyal, Axle, OTB) ---
-                if any(x in name_orig for x in ["WESEL", "WLSE"]): target_keyword, kode_ceklis = "WESEL", "BPBYE1"
-                elif any(x in name_orig for x in ["AXLE", "COUNTER", "AXL"]): target_keyword, kode_ceklis = "AXLE", "BPBYE7"
-                elif any(x in name_orig for x in ["SINYAL", "BLOK", "ZP"]): target_keyword, kode_ceklis = "SINYAL", "BPBYE3"
-                elif any(x in name_orig for x in ["SERAT OPTIK", "OTB"]): target_keyword, kode_ceklis = "OTB", "BPBKF4"
+                # --- JALUR IDENTIFIKASI (KEMBALI KE FORMAT ASLI) ---
+                if any(x in name_orig for x in ["WESEL", "WLSE"]): 
+                    target_keyword, kode_ceklis = "WESEL", "BPBYE1"
+                elif any(x in name_orig for x in ["AXLE", "COUNTER", "AXL"]): 
+                    target_keyword, kode_ceklis = "AXLE", "BPBYE7"
+                elif any(x in name_orig for x in ["SINYAL", "BLOK", "ZP"]): 
+                    target_keyword, kode_ceklis = "SINYAL", "BPBYE3"
+                elif any(x in name_orig for x in ["SERAT OPTIK", "OTB"]): 
+                    target_keyword, kode_ceklis = "OTB", "BPBKF4"
 
                 if target_keyword:
                     try:
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
                         img = images[0].convert('L')
                         
-                        # Area Crop Dinamis OTB (JPL 25%, Stasiun 45%)
-                        if target_keyword == "OTB":
-                            crop_h = 0.25 if "JPL" in name_orig else 0.45
-                        else:
-                            crop_h = 0.25
-                            
-                        img_cropped = img.crop((0.0, img.size[1]*0.05, img.size[0]*1.0, img.size[1]*crop_h))
+                        # Area Crop Dinamis
+                        is_otb_stasiun = (target_keyword == "OTB" and "JPL" not in name_orig)
+                        crop_h = 0.50 if is_otb_stasiun else 0.25
                         
+                        img_cropped = img.crop((0.0, img.size[1]*0.03, img.size[0]*1.0, img.size[1]*crop_h))
                         if debug_mode: st.image(img_cropped, caption=f"Scan: {f.name}")
+                        
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
-                        
-                        noise = ["PERAWATAN", "PEMERIKSAAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "WESEL", "AXLE", "COUNTER", "SINYAL", "DAN", "LANGSIR", "JALAN", "SERAT", "OPTIK"]
 
+                        # --- LOGIKA EKSTRAKSI PER ITEM ---
                         for line in lines:
                             if target_keyword == "OTB":
-                                if "OTB" in line:
-                                    # Hapus simbol aneh di awal baris agar startswith tidak gagal
-                                    clean_line = re.sub(r'^[^\w]+', '', line).strip()
-                                    words = clean_line.replace(".", " ").split()
-                                    
-                                    if len(words) >= 2 and "OTB" in words[0]:
-                                        # Logika OTB FO
-                                        if len(words) >= 3 and words[1] == "FO":
-                                            aid = f"{words[0]} {words[1]} {words[2]}"
-                                            loc_id = " ".join(words[3:]) if len(words) > 3 else "LOKASI"
-                                        else:
-                                            aid = f"{words[0]} {words[1]}"
-                                            loc_id = " ".join(words[2:]) if len(words) > 2 else "LOKASI"
-                                        
-                                        assets_found.append({"id": aid, "loc": loc_id})
-                            
-                            elif any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE"]):
-                                clean = line.split(":")[-1].strip() if ":" in line else line.strip()
-                                words = clean.replace(".", " ").split()
-                                final = [w for w in words if w not in noise]
-                                if final:
-                                    aid, loc_id = final[0], " ".join(final[1:]) if len(final) > 1 else "LOKASI"
-                                    if target_keyword == "WESEL" and not aid.startswith("W"): aid = f"W{aid}"
-                                    elif target_keyword == "AXLE" and not aid.startswith("ZP"): aid = f"ZP{aid}"
+                                # Perbaikan OTB: Menggunakan Regex agar tidak gagal karena karakter sampah (:) atau (TRA)
+                                otb_match = re.search(r'OTB\s+(?:FO\s+)?([A-Z0-9\s]+?)\s+(.*)', line)
+                                if otb_match:
+                                    aid = f"OTB {otb_match.group(1).strip()}"
+                                    loc_id = otb_match.group(2).strip()
                                     assets_found.append({"id": aid, "loc": loc_id})
-                        
-                        del img, images; gc.collect()
-                    except Exception as e: duplicate_errors.append(f"❌ `{f.name}`: OCR Error ({str(e)})")
+                                    
+                            elif target_keyword == "WESEL":
+                                if "WESEL" in line or ":" in line:
+                                    clean = line.split(":")[-1].strip() if ":" in line else line.replace("WESEL", "").strip()
+                                    words = clean.split()
+                                    if words:
+                                        id_w = words[0] if words[0].startswith("W") else f"W{words[0]}"
+                                        loc_w = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
+                                        assets_found.append({"id": id_w, "loc": loc_w})
 
-                # --- JALUR B: FILENAME SCAN (PTDS, PTLS, PTPP, WS, BASESTATION) ---
+                            elif target_keyword == "SINYAL":
+                                if "SINYAL" in line or ":" in line:
+                                    clean = line.split(":")[-1].strip() if ":" in line else line.replace("SINYAL", "").strip()
+                                    words = clean.split()
+                                    if words:
+                                        assets_found.append({"id": words[0], "loc": " ".join(words[1:]) if len(words) > 1 else "LOKASI"})
+
+                            elif target_keyword == "AXLE":
+                                if any(x in line for x in ["AXLE", "COUNTER", "ZP"]):
+                                    clean = line.split(":")[-1].strip() if ":" in line else line.strip()
+                                    words = clean.split()
+                                    if words:
+                                        id_ax = words[0] if words[0].startswith("ZP") else f"ZP{words[0]}"
+                                        assets_found.append({"id": id_ax, "loc": " ".join(words[1:]) if len(words) > 1 else "LOKASI"})
+
+                        del img, images; gc.collect()
+                    except Exception as e:
+                        duplicate_errors.append(f"❌ `{f.name}`: OCR Error ({str(e)})")
+
+                # --- JALUR FILENAME SCAN (PTDS, PTLS, DLL) ---
                 else:
                     if "PTDS" in name_orig: target_keyword, kode_ceklis = "PTDS", "BPBKS15"
                     elif "PTLS" in name_orig: target_keyword, kode_ceklis = "PTLS", "BPBKS16"
                     elif "PTPP" in name_orig: target_keyword, kode_ceklis = "PTPP", "BPBKS17"
-                    elif "WAYSTATION" in name_orig or "WS" in name_orig:
-                        if "3 BULANAN" in name_orig: target_keyword, kode_ceklis = "RADIO WAYSTATION 3B", "BPBKS4"
-                        elif "1 TAHUNAN" in name_orig: target_keyword, kode_ceklis = "RADIO WAYSTATION 1T", "BPBKS15"
-                        elif "DIGITAL" in name_orig: target_keyword, kode_ceklis = "RADIO WAYSTATION DIGITAL", "BPBKS7"
-                    elif "BASESTATION" in name_orig:
-                        if "DIGITAL" in name_orig: target_keyword, kode_ceklis = "RADIO BASESTATION DIGITAL", "BPBKF2"
-                        elif "TAIT" in name_orig: target_keyword, kode_ceklis = "RADIO BASESTATION TAIT", "BPBKF3"
-                        else: target_keyword, kode_ceklis = "RADIO BASESTATION", "BPBKF1"
+                    elif any(x in name_orig for x in ["WAYSTATION", "WS"]): target_keyword, kode_ceklis = "RADIO WAYSTATION", "BPBKS4"
+                    elif "BASESTATION" in name_orig: target_keyword, kode_ceklis = "RADIO BASESTATION", "BPBKF1"
 
                     if target_keyword:
                         parts = name_orig.split(target_keyword)
                         loc_part = parts[-1].split(tgl_full)[0].strip("_ ") if len(parts) > 1 else "LOKASI"
                         assets_found.append({"id": target_keyword, "loc": loc_part})
 
-                # --- PENYUSUNAN NAMA FILE ---
+                # --- PENYUSUNAN FILE ---
                 if assets_found:
                     for asset in assets_found:
                         aid, aloc = asset["id"], asset["loc"]
@@ -171,7 +171,6 @@ if uploaded_files:
                         else:
                             base = f"{jenis_kegiatan.upper()} {aid} {aloc} {tgl_full}"
                         
-                        # Auto-Suffix (1), (2) jika ada duplikat ID/Aset
                         if base in used_names_count:
                             used_names_count[base] += 1
                             final_name = f"{base} ({used_names_count[base]}).pdf"
@@ -186,19 +185,17 @@ if uploaded_files:
 
         status_container.empty()
         if processed_files:
-            with btn_col: st.download_button(label="📥 DOWNLOAD ZIP", data=zip_buffer.getvalue(), file_name="Hasil_Rename_Sintelis_BOO.zip", mime="application/zip", use_container_width=True, type="primary")
+            with btn_col: 
+                st.download_button(label="📥 DOWNLOAD ZIP", data=zip_buffer.getvalue(), 
+                                 file_name="Hasil_Rename_Sintelis_BOO.zip", mime="application/zip", 
+                                 use_container_width=True, type="primary")
 
-        with st.expander(f"✅ Sukses Teridentifikasi ({len(processed_files)})", expanded=True):
-            if processed_files:
-                with st.container(height=150):
-                    for p_file in processed_files: st.write(f"📄 `{p_file}`")
-            else: st.write("Belum ada file sukses.")
+        with st.expander(f"✅ Berhasil ({len(processed_files)})", expanded=True):
+            for p_file in processed_files: st.write(f"📄 `{p_file}`")
 
-        with st.expander(f"❌ Gagal Diproses ({len(duplicate_errors)})", expanded=True):
-            if duplicate_errors:
-                with st.container(height=150):
-                    for err in duplicate_errors: st.warning(err)
-            else: st.write("Tidak ada kendala.")
+        if duplicate_errors:
+            with st.expander(f"❌ Gagal ({len(duplicate_errors)})", expanded=True):
+                for err in duplicate_errors: st.warning(err)
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis 1.21 BOO Utility</div>", unsafe_allow_html=True)
