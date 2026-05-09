@@ -43,7 +43,6 @@ with col1:
     
     if is_admin:
         with st.expander("🛠️ Admin Debug Tools", expanded=False):
-            st.info("Mode Admin: Fitur bantuan teknis.")
             debug_mode = st.checkbox("Aktifkan Layar Intip (Debug Mode)", value=False)
     else:
         debug_mode = False
@@ -78,7 +77,7 @@ if uploaded_files:
                 name_orig = f.name.upper()
                 tgl_match = re.search(r'(\d{2})-(\d{2})-(\d{4})', name_orig)
                 if not tgl_match:
-                    duplicate_errors.append(f"❌ `{f.name}`: Format tanggal tidak ditemukan.")
+                    duplicate_errors.append(f"❌ `{f.name}`: Format tanggal (DD-MM-YYYY) tidak ditemukan.")
                     continue
                 
                 tgl_full = tgl_match.group(0)
@@ -87,28 +86,40 @@ if uploaded_files:
                 
                 assets_found, target_keyword, kode_ceklis = [], None, ""
                 
-                # --- JALUR A: OCR (Wesel, Sinyal, Axle, Serat Optik) ---
+                # --- JALUR A: OCR (Wesel, Sinyal, Axle, Serat Optik/OTB) ---
                 if any(x in name_orig for x in ["WESEL", "WLSE"]): target_keyword, kode_ceklis = "WESEL", "BPBYE1"
                 elif any(x in name_orig for x in ["AXLE", "COUNTER", "AXL"]): target_keyword, kode_ceklis = "AXLE", "BPBYE7"
                 elif any(x in name_orig for x in ["SINYAL", "BLOK", "ZP"]): target_keyword, kode_ceklis = "SINYAL", "BPBYE3"
-                elif any(x in name_orig for x in ["SERAT OPTIK", "OTB"]): target_keyword, kode_ceklis = "SERAT OPTIK", "BPBKF4"
+                elif any(x in name_orig for x in ["SERAT OPTIK", "OTB"]): target_keyword, kode_ceklis = "OTB", "BPBKF4"
 
                 if target_keyword:
                     try:
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
                         img = images[0].convert('L')
-                        # Area Crop diperpanjang khusus Serat Optik/OTB
-                        crop_h = 0.45 if target_keyword == "SERAT OPTIK" else 0.25
+                        # Crop lebih luas untuk OTB
+                        crop_h = 0.45 if target_keyword == "OTB" else 0.25
                         img_cropped = img.crop((0.0, img.size[1]*0.05, img.size[0]*1.0, img.size[1]*crop_h))
                         
                         if debug_mode: st.image(img_cropped, caption=f"Scan: {f.name}")
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
-                        noise = ["PERAWATAN", "PEMERIKSAAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "WESEL", "AXLE", "COUNTER", "SINYAL", "DAN", "LANGSIR", "JALAN", "SERAT", "OPTIK", "OTB"]
+                        noise = ["PERAWATAN", "PEMERIKSAAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "WESEL", "AXLE", "COUNTER", "SINYAL", "DAN", "LANGSIR", "JALAN", "SERAT", "OPTIK"]
 
                         for line in lines:
-                            if any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE", "OTB", "SERAT"]):
+                            # KHUSUS OTB: Hanya proses baris yang mengandung kata OTB
+                            if target_keyword == "OTB":
+                                if "OTB" in line:
+                                    clean = line.split(":")[-1].strip() if ":" in line else line.strip()
+                                    words = clean.replace(".", " ").split()
+                                    # Mengambil OTB + angka/nama sebagai ID, sisanya Lokasi
+                                    if len(words) >= 2:
+                                        aid = f"{words[0]} {words[1]}"
+                                        loc_id = " ".join(words[2:]) if len(words) > 2 else "LOKASI"
+                                        assets_found.append({"id": aid, "loc": loc_id})
+                            
+                            # JALUR UMUM (Wesel/Sinyal/Axle)
+                            elif any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE"]):
                                 clean = line.split(":")[-1].strip() if ":" in line else line.strip()
                                 words = clean.replace(".", " ").split()
                                 final = [w for w in words if w not in noise]
@@ -117,6 +128,7 @@ if uploaded_files:
                                     if target_keyword == "WESEL" and not aid.startswith("W"): aid = f"W{aid}"
                                     elif target_keyword == "AXLE" and not aid.startswith("ZP"): aid = f"ZP{aid}"
                                     assets_found.append({"id": aid, "loc": loc_id})
+                        
                         del img, images; gc.collect()
                     except Exception as e: duplicate_errors.append(f"❌ `{f.name}`: OCR Error ({str(e)})")
 
@@ -135,7 +147,6 @@ if uploaded_files:
                         else: target_keyword, kode_ceklis = "RADIO BASESTATION", "BPBKF1"
 
                     if target_keyword:
-                        # Parsing lokasi dari nama file: ambil teks setelah nama aset dan sebelum tanggal
                         parts = name_orig.split(target_keyword)
                         loc_part = parts[-1].split(tgl_full)[0].strip("_ ") if len(parts) > 1 else "LOKASI"
                         assets_found.append({"id": target_keyword, "loc": loc_part})
@@ -144,11 +155,10 @@ if uploaded_files:
                 if assets_found:
                     for asset in assets_found:
                         aid, aloc = asset["id"], asset["loc"]
-                        keg = jenis_kegiatan.upper()
                         if format_eksklusif:
                             base = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_{jenis_kegiatan}_{aid}_{aloc}_{tgl_full}"
                         else:
-                            base = f"{keg} {aid} {aloc} {tgl_full}"
+                            base = f"{jenis_kegiatan.upper()} {aid} {aloc} {tgl_full}"
                         
                         # Auto-Suffix (1), (2)...
                         if base in used_names_count:
