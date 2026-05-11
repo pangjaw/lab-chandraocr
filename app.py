@@ -113,7 +113,7 @@ if uploaded_files:
                         elif any(x in name_only for x in ["SINYAL", "BLOK", "ZP"]): target_keyword, kode_ceklis = "SINYAL", "BPBYE3"
 
                         if target_keyword:
-                              try:
+                    try:
                         # 1. Konversi PDF ke Gambar (Halaman 1)
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
 
