@@ -159,9 +159,9 @@ if uploaded_files:
                         kegiatan_label = jenis_kegiatan.upper()
                         
                         if format_eksklusif:
-                            # PERBAIKAN: Kategori & ID pakai spasi, ID & Lokasi pakai underscore
-                            # Hasil: ..._Perawatan_AXC ZP 12_MSG_...
-                            new_name = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_{jenis_kegiatan}_{kategori_nama} {aid}_{aloc}_{tgl_full}.pdf"
+                            # PERBAIKAN FINAL: AXC_ZP 14_COS_...
+                            # Menggunakan underscore (_) setelah kategori dan setelah ID
+                            new_name = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_{jenis_kegiatan}_{kategori_nama}_{aid}_{aloc}_{tgl_full}.pdf"
                         else:
                             new_name = f"{kegiatan_label} {kategori_nama} {aid} {aloc} {tgl_full}.pdf"
 
