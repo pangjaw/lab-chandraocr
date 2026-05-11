@@ -141,8 +141,15 @@ if uploaded_files:
                                 final = [w for w in words if w not in noise]
                                 
                                 if final:
-                                    aid, loc_id = final[0], " ".join(final[1:]) if len(final) > 1 else "LOKASI"
-                                    loc_id = loc_id.replace("BUD", "BJD")
+                                    # LOGIKA BARU: Menangani ZP yang terpisah angka (Contoh: ZP 24B)
+                                    if final[0] == "ZP" and len(final) > 1 and any(char.isdigit() for char in final[1]):
+                                        aid = f"{final[0]} {final[1]}"
+                                        loc_id = " ".join(final[2:]) if len(final) > 2 else "LOKASI"
+                                    else:
+                                        aid = final[0]
+                                        loc_id = " ".join(final[1:]) if len(final) > 1 else "LOKASI"
+                                    
+                                    loc_id = loc_id.replace("BUD", "BJD").strip()
                                     
                                     if target_keyword == "WESEL" and not aid.startswith("W"): aid = f"W{aid}"
                                     elif target_keyword == "AXLE" and not aid.startswith("ZP"): aid = f"ZP{aid}"
@@ -155,24 +162,21 @@ if uploaded_files:
 
                 if assets_found:
                     for asset in assets_found:
-                        # Membersihkan spasi di ujung variabel agar tidak mengganggu underscore
-                        aid = asset["id"].strip()
-                        aloc = asset["loc"].strip()
-                        kegiatan_label = jenis_kegiatan.upper()
+                        aid_clean = asset["id"].strip()
+                        aloc_clean = asset["loc"].strip()
                         
                         if format_eksklusif:
-                            # FORMAT FINAL BTP BD: Menggunakan pemisah underscore yang konsisten
-                            # Contoh Hasil: 2026-1_Resor 1.21 Boo_BPBYE7_Perawatan_AXC_ZP 12_MSG_10-01-2026.pdf
-                            new_name = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_{jenis_kegiatan}_{kategori_nama}_{aid}_{aloc}_{tgl_full}.pdf"
+                            # FORMAT FINAL: ..._AXC_ZP 24B_MSG_...
+                            new_name = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_{jenis_kegiatan}_{kategori_nama}_{aid_clean}_{aloc_clean}_{tgl_full}.pdf"
                         else:
-                            new_name = f"{kegiatan_label} {kategori_nama} {aid} {aloc} {tgl_full}.pdf"
+                            new_name = f"{jenis_kegiatan.upper()} {kategori_nama} {aid_clean} {aloc_clean} {tgl_full}.pdf"
 
                         if new_name not in unique_filenames:
                             zip_f.writestr(new_name, f.getvalue())
                             processed_files.append(new_name)
                             unique_filenames.add(new_name)
                         else:
-                            duplicate_errors.append(f"⚠️ `{f.name}`: ID `{aid}` duplikat.")
+                            duplicate_errors.append(f"⚠️ `{f.name}`: ID `{aid_clean}` duplikat.")
                 else:
                     duplicate_errors.append(f"🔍 `{f.name}`: Gagal identifikasi ID Aset.")
 
@@ -180,28 +184,19 @@ if uploaded_files:
 
         if processed_files:
             with btn_col:
-                st.download_button(
-                    label="📥 DOWNLOAD ZIP", 
-                    data=zip_buffer.getvalue(), 
-                    file_name="Hasil_Rename_Sintelis_BOO.zip", 
-                    mime="application/zip", 
-                    use_container_width=True, 
-                    type="primary"
-                )
+                st.download_button(label="📥 DOWNLOAD ZIP", data=zip_buffer.getvalue(), file_name="Hasil_Rename_Sintelis_BOO.zip", mime="application/zip", use_container_width=True, type="primary")
 
         with st.expander(f"✅ Sukses Teridentifikasi ({len(processed_files)})", expanded=True):
             if processed_files:
                 with st.container(height=150):
-                    for p_file in processed_files: 
-                        st.write(f"📄 `{p_file}`")
+                    for p_file in processed_files: st.write(f"📄 `{p_file}`")
             else:
                 st.write("Belum ada file yang berhasil diproses.")
 
         with st.expander(f"❌ Gagal Diproses ({len(duplicate_errors)})", expanded=True):
             if duplicate_errors:
                 with st.container(height=150):
-                    for err in duplicate_errors: 
-                        st.warning(err)
+                    for err in duplicate_errors: st.warning(err)
             else:
                 st.write("Tidak ada kendala pada file.")
 
