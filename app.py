@@ -142,8 +142,6 @@ if uploaded_files:
                                 
                                 if final:
                                     aid, loc_id = final[0], " ".join(final[1:]) if len(final) > 1 else "LOKASI"
-                                    
-                                    # Koreksi otomatis BUD ke BJD
                                     loc_id = loc_id.replace("BUD", "BJD")
                                     
                                     if target_keyword == "WESEL" and not aid.startswith("W"): aid = f"W{aid}"
@@ -161,7 +159,7 @@ if uploaded_files:
                         kegiatan_label = jenis_kegiatan.upper()
                         
                         if format_eksklusif:
-                            # Update: Menggunakan underscore (_) sebelum lokasi (aloc)
+                            # PERBAIKAN: Menggunakan spasi antar kategori & ID, lalu underscore sebelum lokasi
                             new_name = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_{jenis_kegiatan}_{kategori_nama}_{aid}_{aloc}_{tgl_full}.pdf"
                         else:
                             new_name = f"{kegiatan_label} {kategori_nama} {aid} {aloc} {tgl_full}.pdf"
