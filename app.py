@@ -108,7 +108,6 @@ if uploaded_files:
                 
                 assets_found, target_keyword, kode_ceklis, kategori_nama = [], None, "", ""
                 
-                # Identifikasi Tipe Aset dan Kategori untuk Penamaan
                 if any(x in name_only for x in ["WESEL", "WLSE"]): 
                     target_keyword, kode_ceklis, kategori_nama = "WESEL", "BPBYE1", "WESEL"
                 elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): 
@@ -144,7 +143,7 @@ if uploaded_files:
                                 if final:
                                     aid, loc_id = final[0], " ".join(final[1:]) if len(final) > 1 else "LOKASI"
                                     
-                                    # Koreksi otomatis BJD
+                                    # Koreksi otomatis BUD ke BJD
                                     loc_id = loc_id.replace("BUD", "BJD")
                                     
                                     if target_keyword == "WESEL" and not aid.startswith("W"): aid = f"W{aid}"
@@ -162,10 +161,9 @@ if uploaded_files:
                         kegiatan_label = jenis_kegiatan.upper()
                         
                         if format_eksklusif:
-                            # Format BTP BD: [Periode]_Resor 1.21 Boo_[Kode]_[Kegiatan]_[Kategori]_[ID]_[Lokasi]_[Tanggal]
+                            # Update: Menggunakan underscore (_) sebelum lokasi (aloc)
                             new_name = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_{jenis_kegiatan}_{kategori_nama}_{aid}_{aloc}_{tgl_full}.pdf"
                         else:
-                            # Format Standar: [KEGIATAN] [KATEGORI] [ID] [LOKASI] [TANGGAL]
                             new_name = f"{kegiatan_label} {kategori_nama} {aid} {aloc} {tgl_full}.pdf"
 
                         if new_name not in unique_filenames:
