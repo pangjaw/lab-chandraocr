@@ -5,7 +5,7 @@ import os
 import zipfile
 import platform
 import pytesseract
-import gc 
+import gc
 from PIL import Image, ImageOps  # Tambahkan ImageOps di sini
 from io import BytesIO
 from pdf2image import convert_from_bytes
