@@ -106,18 +106,21 @@ if uploaded_files:
                 thn_angka = tgl_match.group(3)
                 prefix_periode = f"{thn_angka}-{bln_angka}"
                 
-                assets_found, target_keyword, kode_ceklis = [], None, ""
+                assets_found, target_keyword, kode_ceklis, kategori_nama = [], None, "", ""
                 
-                if any(x in name_only for x in ["WESEL", "WLSE"]): target_keyword, kode_ceklis = "WESEL", "BPBYE1"
-                elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): target_keyword, kode_ceklis = "AXLE", "BPBYE7"
-                elif any(x in name_only for x in ["SINYAL", "BLOK", "ZP"]): target_keyword, kode_ceklis = "SINYAL", "BPBYE3"
+                # Identifikasi Tipe Aset dan Kategori untuk Penamaan
+                if any(x in name_only for x in ["WESEL", "WLSE"]): 
+                    target_keyword, kode_ceklis, kategori_nama = "WESEL", "BPBYE1", "WESEL"
+                elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): 
+                    target_keyword, kode_ceklis, kategori_nama = "AXLE", "BPBYE7", "AXC"
+                elif any(x in name_only for x in ["SINYAL", "BLOK", "ZP"]): 
+                    target_keyword, kode_ceklis, kategori_nama = "SINYAL", "BPBYE3", "SINYAL"
 
                 if target_keyword:
                     try:
-                        # OCR Processing
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
                         img = images[0].convert('L') 
-                        img = ImageOps.autocontrast(img) # Memperbaiki kontras untuk akurasi
+                        img = ImageOps.autocontrast(img) 
                         
                         width, height = img.size
                         img_cropped = img.crop((0.0, height*0.05, width*1.0, height*0.25))
@@ -141,9 +144,8 @@ if uploaded_files:
                                 if final:
                                     aid, loc_id = final[0], " ".join(final[1:]) if len(final) > 1 else "LOKASI"
                                     
-                                    # --- KOREKSI OTOMATIS LOKASI ---
+                                    # Koreksi otomatis BJD
                                     loc_id = loc_id.replace("BUD", "BJD")
-                                    # ------------------------------
                                     
                                     if target_keyword == "WESEL" and not aid.startswith("W"): aid = f"W{aid}"
                                     elif target_keyword == "AXLE" and not aid.startswith("ZP"): aid = f"ZP{aid}"
@@ -160,9 +162,11 @@ if uploaded_files:
                         kegiatan_label = jenis_kegiatan.upper()
                         
                         if format_eksklusif:
-                            new_name = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_{jenis_kegiatan}_{aid}_{aloc}_{tgl_full}.pdf"
+                            # Format BTP BD: [Periode]_Resor 1.21 Boo_[Kode]_[Kegiatan]_[Kategori]_[ID]_[Lokasi]_[Tanggal]
+                            new_name = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_{jenis_kegiatan}_{kategori_nama}_{aid}_{aloc}_{tgl_full}.pdf"
                         else:
-                            new_name = f"{kegiatan_label} {aid} {aloc} {tgl_full}.pdf"
+                            # Format Standar: [KEGIATAN] [KATEGORI] [ID] [LOKASI] [TANGGAL]
+                            new_name = f"{kegiatan_label} {kategori_nama} {aid} {aloc} {tgl_full}.pdf"
 
                         if new_name not in unique_filenames:
                             zip_f.writestr(new_name, f.getvalue())
