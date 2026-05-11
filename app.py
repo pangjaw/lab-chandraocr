@@ -114,42 +114,51 @@ if uploaded_files:
 
                 if target_keyword:
                     try:
-                        images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
-                        img = images[0].convert('L') 
-                        img = ImageOps.autocontrast(img) 
-
+                        # 1. Konversi PDF ke Gambar (Halaman 1)
+                        images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
+                        
+                        # 2. Pre-processing agar OCR lebih akurat (ImageOps)
+                        from PIL import ImageOps # Impor di sini agar aman
+                        img = images[0].convert('L') 
+                        img = ImageOps.autocontrast(img) # Mempertegas kontras
+                        
                         width, height = img.size
                         img_cropped = img.crop((0.0, height*0.05, width*1.0, height*0.25))
-                        width, height = img.size
-                        img_cropped = img.crop((0.0, height*0.05, width*1.0, height*0.25))
-                        
-                        if debug_mode: st.image(img_cropped, caption=f"Scan: {f.name}")
-                            
-                        text_crop = pytesseract.image_to_string(img_cropped).upper()
-                        lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
-                        
-                        noise = ["PERAWATAN", "PEMERIKSAAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG", 
-                                 "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS", "PERAGA", 
-                                 "SINYAL", "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", "SETEMPAT", "BLOK", 
-                                 "MASUK", "KELUAR", "MUKA", "DAN", "LANGSIR", "JALAN"]
+                        
+                        if debug_mode: 
+                            st.image(img_cropped, caption=f"Scan: {f.name}")
+                            
+                        # 3. Proses OCR
+                        text_crop = pytesseract.image_to_string(img_cropped).upper()
+                        lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
+                        
+                        noise = ["PERAWATAN", "PEMERIKSAAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG", 
+                                 "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS", "PERAGA", 
+                                 "SINYAL", "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", "SETEMPAT", "BLOK", 
+                                 "MASUK", "KELUAR", "MUKA", "DAN", "LANGSIR", "JALAN"]
 
-                        for line in lines:
-                            if any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE", "COUNTER"]):
-                                clean = line.split(":")[-1].strip() if ":" in line else line.strip()
-                                words = clean.replace(".", " ").split()
-                                final = [w for w in words if w not in noise]
-                                
-                                if final:
-                                    aid, loc_id = final[0], " ".join(final[1:]) if len(final) > 1 else "LOKASI"
+                        for line in lines:
+                            if any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE", "COUNTER"]):
+                                clean = line.split(":")[-1].strip() if ":" in line else line.strip()
+                                words = clean.replace(".", " ").split()
+                                final = [w for w in words if w not in noise]
+                                
+                                if final:
+                                    # Ambil ID Aset dan Lokasi
+                                    aid, loc_id = final[0], " ".join(final[1:]) if len(final) > 1 else "LOKASI"
+                                    
+                                    # --- KOREKSI OTOMATIS LOKASI ---
                                     loc_id = loc_id.replace("BUD", "BJD")
-                                    if target_keyword == "WESEL" and not aid.startswith("W"): aid = f"W{aid}"
-                                    elif target_keyword == "AXLE" and not aid.startswith("ZP"): aid = f"ZP{aid}"
-                                    assets_found.append({"id": aid, "loc": loc_id})
-                        
-                        del img, img_cropped, images
-                        gc.collect() 
-                    except Exception as e:
-                        duplicate_errors.append(f"❌ `{f.name}`: OCR Error ({str(e)})")
+                                    # ------------------------------
+
+                                    if target_keyword == "WESEL" and not aid.startswith("W"): aid = f"W{aid}"
+                                    elif target_keyword == "AXLE" and not aid.startswith("ZP"): aid = f"ZP{aid}"
+                                    assets_found.append({"id": aid, "loc": loc_id})
+                        
+                        del img, img_cropped, images
+                        gc.collect() 
+                    except Exception as e:
+                        duplicate_errors.append(f"❌ `{f.name}`: OCR Error ({str(e)})")
 
                 if assets_found:
                     for asset in assets_found:
