@@ -155,12 +155,14 @@ if uploaded_files:
 
                 if assets_found:
                     for asset in assets_found:
-                        aid, aloc = asset["id"], asset["loc"]
+                        # Membersihkan spasi di ujung variabel agar tidak mengganggu underscore
+                        aid = asset["id"].strip()
+                        aloc = asset["loc"].strip()
                         kegiatan_label = jenis_kegiatan.upper()
                         
                         if format_eksklusif:
-                            # PERBAIKAN FINAL: AXC_ZP 14_COS_...
-                            # Menggunakan underscore (_) setelah kategori dan setelah ID
+                            # FORMAT FINAL BTP BD: Menggunakan pemisah underscore yang konsisten
+                            # Contoh Hasil: 2026-1_Resor 1.21 Boo_BPBYE7_Perawatan_AXC_ZP 12_MSG_10-01-2026.pdf
                             new_name = f"{prefix_periode}_Resor 1.21 Boo_{kode_ceklis}_{jenis_kegiatan}_{kategori_nama}_{aid}_{aloc}_{tgl_full}.pdf"
                         else:
                             new_name = f"{kegiatan_label} {kategori_nama} {aid} {aloc} {tgl_full}.pdf"
