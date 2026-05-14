@@ -107,7 +107,7 @@ if uploaded_files:
                 elif any(x in name_only for x in ["SINYAL", "BLOK"]): 
                     target_keyword, kode_ceklis, kategori_nama = "SINYAL", "BPBYE3", "SINYAL"
                 elif any(x in name_only for x in ["OPTIK", "OPTIC", "SERAT", "OTB", "TRA"]): 
-                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "Serat Optik"
+                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "SERAT OPTIK"
 
                 if target_keyword:
                     try:
@@ -127,7 +127,7 @@ if uploaded_files:
                             with st.expander(f"📄 Teks Ekstraksi Asli: {f.name}", expanded=False):
                                 st.text(page_text)
 
-                        trace_logs = [] # <-- INISIALISASI LOG TRACKER
+                        trace_logs = []
 
                         # 2. PROSES SCANNING MULTI-LINE
                         for line in lines:
@@ -184,50 +184,33 @@ if uploaded_files:
                                     assets_found.append({"id": aid, "loc": loc_id})
 
                             # ==================== KATEGORI SERAT OPTIK ====================
-                            elif target_keyword == "OPTIK" and ("TRA" in line or "OTB" in line):
-                                trace_logs.append(f"🔍 [OPTIK] MENEMUKAN KATA KUNCI DI BARIS: '{line}'")
+                            # DIKEMBALIKAN KE LOGIKA ASLI MENCARI "TRA" DAN TITIK DUA ":"
+                            elif target_keyword == "OPTIK" and "TRA" in line and ":" in line:
+                                trace_logs.append(f"🔍 [SERAT OPTIK] MEMPROSES BARIS: '{line}'")
                                 
-                                noise_optik = ["NAMA", "MOUNTING", "BRACKET", "TUTUP", "KABEL", "KONEKTOR", "ADAPTER", 
-                                               "PENGUKURAN", "REDAMAN", "RUANG", "OPTICAL", "SERAT", "OPTIK", "DISTRIBUTION", 
-                                               "TERMINATION", "BOX", "JUMLAH", "CORE", "POSISI", "CAHAYA", "NILAI", "JARAK"]
+                                right_side = line.split(":")[-1].strip()
                                 
-                                if any(noise in line for noise in noise_optik):
-                                    trace_logs.append(f"⚠️ [OPTIK] DIBUANG: Mengandung kata instruksi kerja (Noise).")
-                                    continue
+                                for noise in ["SERAT OPTIK", "KABEL OPTIK", "KABEL"]:
+                                    right_side = right_side.replace(noise, "")
+                                right_side = right_side.strip()
                                 
-                                right_side = re.sub(r'TRA\s*\d*\s*[:\-]?\s*', '', line).strip()
-                                trace_logs.append(f"✂️ [OPTIK] HASIL BERSIH REGEX 'TRA': '{right_side}'")
-                                
-                                if "OTB" in right_side:
-                                    right_side = right_side[right_side.find("OTB"):]
-                                    trace_logs.append(f"🎯 [OPTIK] DIPOTONG MULAI KATA 'OTB': '{right_side}'")
+                                words = right_side.split()
+                                if words:
+                                    if words[0] == "OTB" and len(words) > 1:
+                                        aid = f"OTB {words[1]}"
+                                        loc_id = " ".join(words[2:]) if len(words) > 2 else "LOKASI"
+                                    else:
+                                        aid = words[0] if words[0].startswith("OTB") else f"OTB {words[0]}"
+                                        loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     
-                                    words = right_side.split()
-                                    trace_logs.append(f"🧩 [OPTIK] KATA DIPECAH (SPLIT): {words}")
-                                    
-                                    if words:
-                                        if len(words) > 1:
-                                            aid = f"OTB {words[1]}"
-                                            loc_id = " ".join(words[2:]) if len(words) > 2 else "LOKASI"
-                                        else:
-                                            aid = words[0]
-                                            loc_id = "LOKASI"
-                                        
-                                        trace_logs.append(f"✅ [OPTIK] SUKSES TEREKAM -> ID: {aid} | LOKASI: {loc_id}")
-                                        assets_found.append({"id": aid, "loc": loc_id})
-                                else:
-                                    trace_logs.append(f"❌ [OPTIK] GAGAL: Tidak ada kata 'OTB' tersisa setelah dibersihkan.")
+                                    trace_logs.append(f"✅ SUKSES -> ID: {aid} | LOC: {loc_id}")
+                                    assets_found.append({"id": aid, "loc": loc_id})
 
-                        # --- TAMPILKAN LOG INVESTIGASI KE LAYAR ---
                         if debug_mode and trace_logs:
                             with st.expander(f"🕵️ DETEKTIF LOG: {f.name}", expanded=True):
                                 for log in trace_logs:
-                                    if "SUKSES" in log:
-                                        st.success(log)
-                                    elif "GAGAL" in log or "DIBUANG" in log:
-                                        st.warning(log)
-                                    else:
-                                        st.text(log)
+                                    if "✅" in log: st.success(log)
+                                    else: st.text(log)
 
                         gc.collect() 
                     except Exception as e:
