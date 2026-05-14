@@ -131,16 +131,20 @@ if uploaded_files:
                             if target_keyword == "WESEL" and "WSL" in line and ":" in line:
                                 right_side = line.split(":")[-1].strip()
                                 
-                                # Hapus frasa operasional wesel yang panjang terlebih dahulu
-                                for jenis_wesel in ["WESEL ELEKTRIK TERLAYAN SETEMPAT", "WESEL ELEKTRIK", "PENGGERAK WESEL", "ELEKTRIK"]:
-                                    right_side = right_side.replace(jenis_wesel, "")
+                                # 1. Hapus variasi kata jika mereka menempel atau ber spasi
+                                right_side = right_side.replace("WESEL ELEKTRIK TERLAYAN SETEMPAT", "")
+                                right_side = right_side.replace("WESEL ELEKTRIK", "")
+                                right_side = right_side.replace("PENGGERAK WESEL", "")
+                                right_side = right_side.replace("WESELPENGGERAK", "") # <-- Kunci untuk error saat ini
                                 
-                                # Hapus jika ada sisa kata "WESEL" mandiri
+                                # 2. Hapus kata mandiri secara agresif untuk membersihkan sisa kata yang menempel
+                                right_side = right_side.replace("PENGGERAK", "")
+                                right_side = right_side.replace("ELEKTRIK", "")
                                 right_side = right_side.replace("WESEL", "").strip()
                                 
                                 words = right_side.split()
                                 if words:
-                                    # Pastikan ID diawali huruf W dengan rapi
+                                    # Pastikan ID diawali huruf W dengan rapi (misal dari "21" menjadi "W21")
                                     aid = words[0] if words[0].startswith("W") else f"W{words[0]}"
                                     loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     assets_found.append({"id": aid, "loc": loc_id})
