@@ -81,14 +81,43 @@ with col1:
     )
 
 # --- 4. PROSES DATA ---
+# --- DI DALAM KOLOM 2 (HASIL PROSES) ---
+
 if uploaded_files:
-    zip_buffer = BytesIO()
-    processed_files, duplicate_errors, unique_filenames = [], [], set() 
-    
-    with col2:
-        head_col, btn_col = st.columns([1.5, 1])
-        with head_col:
-            st.subheader("📋 Hasil Proses")
+    # Kita buat tombol pemicu utama
+    mulai_proses = st.button("🚀 JALANKAN SCAN & RENAME", use_container_width=True, type="primary")
+
+    if mulai_proses:
+        # 1. Jalankan Seluruh Logika OCR kamu di sini
+        # (Semua variabel zip_buffer, processed_files, dll dijalankan di dalam blok ini)
+        
+        # ... [LOGIKA OCR LENGKAP] ...
+
+        # 2. Setelah proses OCR selesai, tampilkan dua tombol berdampingan
+        st.success("✅ Proses Selesai! Silakan unduh hasil.")
+        
+        btn_col1, btn_col2 = st.columns(2)
+        
+        with btn_col1:
+            # Tombol Download
+            download_klik = st.download_button(
+                label="📥 DOWNLOAD ZIP",
+                data=zip_buffer.getvalue(),
+                file_name="Hasil_Rename_Sintelis.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
+
+        with btn_col2:
+            # Tombol Mulai Baru
+            # Akan DISABLED jika download belum diklik, dan ENABLED jika sudah diklik
+            if st.button("🔄 MULAI BARU", use_container_width=True, disabled=not download_klik):
+                st.rerun()
+
+        # 3. Tampilkan daftar file hasil di bawahnya
+        with st.expander("📋 Daftar File Berhasil", expanded=True):
+            for p_file in processed_files:
+                st.write(f"📄 `{p_file}`")
         
         # Animasi Lottie saat proses
         status_container = st.empty()
