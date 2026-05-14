@@ -99,12 +99,15 @@ if uploaded_files:
                 
                 assets_found, target_keyword, kode_ceklis, kategori_nama = [], None, "", ""
                 
+                # Pindahkan "ZP" ke kelompok AXLE, dan hapus dari kelompok SINYAL
                 if any(x in name_only for x in ["WESEL", "WLSE"]): 
                     target_keyword, kode_ceklis, kategori_nama = "WESEL", "BPBYE1", "WESEL"
-                elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL"]): 
+                elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL", "ZP"]): # <--- ZP SEKARANG ADA DI SINI
                     target_keyword, kode_ceklis, kategori_nama = "AXLE", "BPBYE7", "AXC"
-                elif any(x in name_only for x in ["SINYAL", "BLOK", "ZP"]): 
+                elif any(x in name_only for x in ["SINYAL", "BLOK"]): # <--- ZP SUDAH DIHAPUS DARI SINI
                     target_keyword, kode_ceklis, kategori_nama = "SINYAL", "BPBYE3", "SINYAL"
+                elif any(x in name_only for x in ["OPTIK", "OPTIC", "SERAT", "OTB", "TRA"]): 
+                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "Serat Optik"
 
                 if target_keyword:
                     try:
@@ -124,27 +127,24 @@ if uploaded_files:
                             with st.expander(f"🔍 Teks Ekstraksi Asli: {f.name}", expanded=False):
                                 st.text(page_text)
 
-                        # 2. PROSES SCANNING MULTI-LINE BERDASARKAN POLA INTERNAL KAI (WSL / AXL / SIN)
+                        # 2. PROSES SCANNING MULTI-LINE BERDASARKAN POLA INTERNAL KAI
                         for line in lines:
                             
                             # ==================== KATEGORI WESEL ====================
                             if target_keyword == "WESEL" and "WSL" in line and ":" in line:
                                 right_side = line.split(":")[-1].strip()
                                 
-                                # 1. Hapus variasi kata jika mereka menempel atau ber spasi
                                 right_side = right_side.replace("WESEL ELEKTRIK TERLAYAN SETEMPAT", "")
                                 right_side = right_side.replace("WESEL ELEKTRIK", "")
                                 right_side = right_side.replace("PENGGERAK WESEL", "")
-                                right_side = right_side.replace("WESELPENGGERAK", "") # <-- Kunci untuk error saat ini
+                                right_side = right_side.replace("WESELPENGGERAK", "")
                                 
-                                # 2. Hapus kata mandiri secara agresif untuk membersihkan sisa kata yang menempel
                                 right_side = right_side.replace("PENGGERAK", "")
                                 right_side = right_side.replace("ELEKTRIK", "")
                                 right_side = right_side.replace("WESEL", "").strip()
                                 
                                 words = right_side.split()
                                 if words:
-                                    # Pastikan ID diawali huruf W dengan rapi (misal dari "21" menjadi "W21")
                                     aid = words[0] if words[0].startswith("W") else f"W{words[0]}"
                                     loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     assets_found.append({"id": aid, "loc": loc_id})
@@ -153,13 +153,11 @@ if uploaded_files:
                             elif target_keyword == "AXLE" and "AXL" in line and ":" in line:
                                 right_side = line.split(":")[-1].strip()
                                 
-                                # Bersihkan variasi teks AXLE COUNTER dan karakter titik/noise
                                 right_side = right_side.replace("AXLE.COUNTER.", "").replace("AXLE COUNTER", "")
-                                right_side = right_side.replace(".", " ").strip() # Ubah sisa titik menjadi spasi
+                                right_side = right_side.replace(".", " ").strip() 
                                 
                                 words = right_side.split()
                                 if words:
-                                    # Logika penanganan ZP
                                     if words[0] == "ZP" and len(words) > 1:
                                         aid = f"ZP {words[1]}"
                                         loc_id = " ".join(words[2:]) if len(words) > 2 else "LOKASI"
@@ -182,7 +180,26 @@ if uploaded_files:
                                     aid = words[0]
                                     loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     assets_found.append({"id": aid, "loc": loc_id})
+
+                            # ==================== KATEGORI SERAT OPTIK ====================
+                            elif target_keyword == "OPTIK" and "TRA" in line and ":" in line:
+                                right_side = line.split(":")[-1].strip()
                                 
+                                for noise in ["SERAT OPTIK", "KABEL OPTIK", "KABEL"]:
+                                    right_side = right_side.replace(noise, "")
+                                right_side = right_side.strip()
+                                
+                                words = right_side.split()
+                                if words:
+                                    if words[0] == "OTB" and len(words) > 1:
+                                        aid = f"OTB {words[1]}"
+                                        loc_id = " ".join(words[2:]) if len(words) > 2 else "LOKASI"
+                                    else:
+                                        aid = words[0] if words[0].startswith("OTB") else f"OTB {words[0]}"
+                                        loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
+                                    
+                                    assets_found.append({"id": aid, "loc": loc_id})
+
                         gc.collect() 
                     except Exception as e:
                         duplicate_errors.append(f"❌ `{f.name}`: Error Membaca PDF ({str(e)})")
