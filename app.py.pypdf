@@ -1,22 +1,13 @@
 import streamlit as st
 import json
 import re
-import os
 import zipfile
-import platform
-import pytesseract
+import pypdf
 import gc 
 from io import BytesIO
-from pdf2image import convert_from_bytes
 from streamlit_lottie import st_lottie
-from PIL import ImageOps
 
-# --- 1. KONFIGURASI TESSERACT ---
-if platform.system() == "Windows":
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-else:
-    pytesseract.pytesseract.tesseract_cmd = 'tesseract'
-
+# --- 1. UTILITY FUNCTIONS ---
 def load_lottiefile(filepath: str):
     try:
         with open(filepath, "r") as f:
@@ -30,8 +21,8 @@ lottie_train = load_lottiefile("Metro Rail.json")
 is_admin = st.query_params.get("mode") == "admin"
 
 # --- 3. TAMPILAN UTAMA ---
-st.set_page_config(page_title="Sintelis 1.21 BOO Utility", page_icon="📑", layout="wide")
-st.title("📑 GANTI NAMA FILE CEKLIS SINTELIS (OCR SCANNER)")
+st.set_page_config(page_title="Sintelis 1.21 BOO Utility (Digital PDF)", page_icon="📑", layout="wide")
+st.title("📑 GANTI NAMA FILE CEKLIS SINTELIS (DIGITAL VERSION)")
 
 col1, col2 = st.columns([1, 1], gap="large")
 
@@ -56,7 +47,7 @@ with col1:
     if is_admin:
         with st.expander("🛠️ Admin Debug Tools", expanded=False):
             st.info("Mode Admin: Fitur bantuan teknis.")
-            debug_mode = st.checkbox("Aktifkan Layar Intip & Trace Log (Debug Mode)", value=False)
+            debug_mode = st.checkbox("Aktifkan Layar Intip Teks & Trace Log", value=False)
     else:
         debug_mode = False
 
@@ -92,7 +83,7 @@ if uploaded_files:
 
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for idx, f in enumerate(uploaded_files):
-                progress_text.info(f"🚂 Memproses {idx+1}/{len(uploaded_files)} (OCR bekerja)...")
+                progress_text.info(f"🚂 Memproses {idx+1}/{len(uploaded_files)}...")
                 
                 name_only = f.name.upper()
                 tgl_match = re.search(r'(\d{2})-(\d{2})-(\d{4})', name_only)
@@ -108,7 +99,7 @@ if uploaded_files:
                 
                 assets_found, target_keyword, kode_ceklis, kategori_nama = [], None, "", ""
                 
-                # Deteksi File & Kategori
+                # Deteksi File
                 if any(x in name_only for x in ["WESEL", "WLSE"]): 
                     target_keyword, kode_ceklis, kategori_nama = "WESEL", "BPBYE1", "WESEL"
                 elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL", "ZP"]): 
@@ -120,38 +111,36 @@ if uploaded_files:
 
                 if target_keyword:
                     try:
-                        images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
-                        img = images[0].convert('L') 
-                        img = ImageOps.autocontrast(img) 
+                        # 1. EKSTRAKSI TEKS DIRECTLY DENGAN PYPDF
+                        pdf_file = BytesIO(f.getvalue())
+                        reader = pypdf.PdfReader(pdf_file)
+                        page_text = reader.pages[0].extract_text()
                         
-                        width, height = img.size
-                        # CROP OPTIMAL: Dari atas sampai 50% tinggi halaman
-                        img_cropped = img.crop((0, 0, width, int(height * 0.5)))
-                        
-                        if debug_mode: 
-                            st.image(img_cropped, caption=f"Area Crop (50%): {f.name}")
-                            
-                        text_crop = pytesseract.image_to_string(img_cropped).upper()
-                        lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
+                        if not page_text or page_text.strip() == "":
+                            duplicate_errors.append(f"❌ `{f.name}`: PDF terdeteksi kosong/berupa Gambar Hasil Scan.")
+                            continue
+
+                        text_upper = page_text.upper()
+                        lines = [line.strip() for line in text_upper.split('\n') if line.strip()]
                         
                         if debug_mode:
-                            with st.expander(f"📄 Hasil Scan OCR: {f.name}", expanded=False):
-                                st.text(text_crop)
+                            with st.expander(f"📄 Teks Ekstraksi Asli: {f.name}", expanded=False):
+                                st.text(page_text)
 
                         trace_logs = []
 
-                        # ==================== LOGIKA "OTAK" BARU ====================
+                        # 2. PROSES SCANNING MULTI-LINE
                         for line in lines:
                             
                             # ==================== KATEGORI WESEL ====================
                             if target_keyword == "WESEL" and "WSL" in line and ":" in line:
-                                trace_logs.append(f"🔍 [WESEL] Baris asli: '{line}'")
                                 right_side = line.split(":")[-1].strip()
                                 
                                 right_side = right_side.replace("WESEL ELEKTRIK TERLAYAN SETEMPAT", "")
                                 right_side = right_side.replace("WESEL ELEKTRIK", "")
                                 right_side = right_side.replace("PENGGERAK WESEL", "")
                                 right_side = right_side.replace("WESELPENGGERAK", "")
+                                
                                 right_side = right_side.replace("PENGGERAK", "")
                                 right_side = right_side.replace("ELEKTRIK", "")
                                 right_side = right_side.replace("WESEL", "").strip()
@@ -160,12 +149,10 @@ if uploaded_files:
                                 if words:
                                     aid = words[0] if words[0].startswith("W") else f"W{words[0]}"
                                     loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
-                                    trace_logs.append(f"✅ SUKSES -> ID: {aid} | LOC: {loc_id}")
                                     assets_found.append({"id": aid, "loc": loc_id})
 
                             # ==================== KATEGORI AXLE COUNTER ====================
                             elif target_keyword == "AXLE" and "AXL" in line and ":" in line:
-                                trace_logs.append(f"🔍 [AXC] Baris asli: '{line}'")
                                 right_side = line.split(":")[-1].strip()
                                 
                                 right_side = right_side.replace("AXLE.COUNTER.", "").replace("AXLE COUNTER", "")
@@ -179,12 +166,10 @@ if uploaded_files:
                                     else:
                                         aid = words[0] if words[0].startswith("ZP") else f"ZP{words[0]}"
                                         loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
-                                    trace_logs.append(f"✅ SUKSES -> ID: {aid} | LOC: {loc_id}")
                                     assets_found.append({"id": aid, "loc": loc_id})
 
                             # ==================== KATEGORI SINYAL ====================
                             elif target_keyword == "SINYAL" and "SIN" in line and ":" in line:
-                                trace_logs.append(f"🔍 [SINYAL] Baris asli: '{line}'")
                                 right_side = line.split(":")[-1].strip()
                                 
                                 for jenis_sinyal in ["SINYAL BLOK", "SINYAL MUKA", "SINYAL MASUK", "SINYAL KELUAR", "SINYAL LANGSIR"]:
@@ -196,12 +181,13 @@ if uploaded_files:
                                 if words:
                                     aid = words[0]
                                     loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
-                                    trace_logs.append(f"✅ SUKSES -> ID: {aid} | LOC: {loc_id}")
                                     assets_found.append({"id": aid, "loc": loc_id})
 
                             # ==================== KATEGORI SERAT OPTIK ====================
+                            # DIKEMBALIKAN KE LOGIKA ASLI MENCARI "TRA" DAN TITIK DUA ":"
                             elif target_keyword == "OPTIK" and "TRA" in line and ":" in line:
-                                trace_logs.append(f"🔍 [SERAT OPTIK] Baris asli: '{line}'")
+                                trace_logs.append(f"🔍 [SERAT OPTIK] MEMPROSES BARIS: '{line}'")
+                                
                                 right_side = line.split(":")[-1].strip()
                                 
                                 for noise in ["SERAT OPTIK", "KABEL OPTIK", "KABEL"]:
@@ -226,10 +212,9 @@ if uploaded_files:
                                     if "✅" in log: st.success(log)
                                     else: st.text(log)
 
-                        del img, img_cropped, images
                         gc.collect() 
                     except Exception as e:
-                        duplicate_errors.append(f"❌ `{f.name}`: OCR Error ({str(e)})")
+                        duplicate_errors.append(f"❌ `{f.name}`: Error Membaca PDF ({str(e)})")
 
                 if assets_found:
                     for asset in assets_found:
@@ -272,4 +257,4 @@ if uploaded_files:
                 st.write("Tidak ada kendala pada file.")
 
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis 1.21 BOO Utility</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dikha Armansyah</b> | Sintelis 1.21 BOO Utility</div>", unsafe_allow_html=True)

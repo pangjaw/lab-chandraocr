@@ -1,3 +1,6 @@
 streamlit
 pypdf
 streamlit-lottie
+pdf2image
+pytesseract
+Pillow
