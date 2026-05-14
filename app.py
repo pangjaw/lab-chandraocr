@@ -149,8 +149,17 @@ if uploaded_files:
                                     assets_found.append({"id": aid, "loc": loc_id})
 
                             # Pola Sinyal: SINxxxxx : SINYAL BLOK [AID] [LOC]
+                            # Pola Sinyal: SINxxxxx : SINYAL BLOK / MASUK / KELUAR / MUKA [AID] [LOC]
                             elif target_keyword == "SINYAL" and "SIN" in line and ":" in line:
-                                right_side = line.split(":")[-1].replace("SINYAL BLOK", "").strip()
+                                right_side = line.split(":")[-1].strip()
+                                
+                                # Bersihkan semua variasi jenis sinyal operasional agar tidak ikut ke nama file
+                                for jenis_sinyal in ["SINYAL BLOK", "SINYAL MUKA", "SINYAL MASUK", "SINYAL KELUAR", "SINYAL LANGSIR"]:
+                                    right_side = right_side.replace(jenis_sinyal, "")
+                                
+                                # Bersihkan juga jika ada sisa kata "SINYAL" mandiri yang tertinggal
+                                right_side = right_side.replace("SINYAL", "").strip()
+                                
                                 words = right_side.split()
                                 if words:
                                     aid = words[0]
@@ -160,7 +169,7 @@ if uploaded_files:
                         gc.collect() 
                     except Exception as e:
                         duplicate_errors.append(f"❌ `{f.name}`: Error Membaca PDF ({str(e)})")
-                        
+
                 if assets_found:
                     for asset in assets_found:
                         aid_clean = asset["id"].strip()
