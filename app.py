@@ -222,23 +222,24 @@ if uploaded_files:
                                     trace_logs.append(f"✅ SUKSES -> ID: {aid} | LOC: {loc_id}")
                                     assets_found.append({"id": aid, "loc": loc_id})
                             
-                            # ==================== KATEGORI TELKOM LUAR STASIUN ====================
+                            # ==================== KATEGORI TELKOM LUAR (PTLS) ====================
                             elif target_keyword == "TELKOM_LUAR" and "TRA" in line and ":" in line:
-                                trace_logs.append(f"🔍 [TELKOM LUAR] Baris asli: '{line}'")
+                                trace_logs.append(f"🔍 [PTLS] Baris asli: '{line}'")
                                 right_side = line.split(":")[-1].strip()
                                 
-                                # Hapus kata-kata operasional / noise (Sebutkan jika ada yang sering muncul)
-                                for noise in ["PERAWATAN", "PEMERIKSAAN", "TELEKOMUNIKASI"]:
+                                # Membersihkan kata-kata operasional
+                                for noise in ["TELEKOMUNIKASI", "TELKOM", "LUAR", "STASIUN", "PTLS", "RADIO", "BASE", "STATION"]:
                                     right_side = right_side.replace(noise, "")
                                 right_side = right_side.strip()
                                 
                                 words = right_side.split()
                                 if words:
-                                    # Logika sementara: Ambil kata pertama sebagai ID, sisanya Lokasi
-                                    aid = words[0] 
+                                    # LOGIKA BARU: words[0] adalah ID Aset, words[1:] adalah Lokasi.
+                                    # Kita sengaja TIDAK memasukkan words[0] ke dalam variabel aid.
                                     loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
+                                    aid = "" # Kosongkan nilai ID Aset agar tidak masuk ke penamaan file
                                     
-                                    trace_logs.append(f"✅ SUKSES -> ID: {aid} | LOC: {loc_id}")
+                                    trace_logs.append(f"✅ SUKSES -> ID Dihiraukan | LOC: {loc_id}")
                                     assets_found.append({"id": aid, "loc": loc_id})
 
                         if debug_mode and trace_logs:
