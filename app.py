@@ -1,69 +1,4 @@
-import streamlit as st
-import json
-import re
-import zipfile
-import pypdf
-import gc 
-from io import BytesIO
-from streamlit_lottie import st_lottie
-
-# --- 1. UTILITY FUNCTIONS ---
-def load_lottiefile(filepath: str):
-    try:
-        with open(filepath, "r") as f:
-            return json.load(f)
-    except:
-        return None
-
-lottie_train = load_lottiefile("Metro Rail.json")
-
-# --- 2. LOGIKA ADMIN MODE ---
-is_admin = st.query_params.get("mode") == "admin"
-
-# --- 3. TAMPILAN UTAMA ---
-st.set_page_config(page_title="Sintelis 1.21 BOO Utility (Digital PDF)", page_icon="📑", layout="wide")
-st.title("📑 GANTI NAMA FILE CEKLIS SINTELIS (DIGITAL VERSION)")
-
-col1, col2 = st.columns([1, 1], gap="large")
-
-with col1:
-    st.subheader("📁 Input & Setting")
-    
-    jenis_kegiatan = st.radio(
-        "Pilih Jenis Kegiatan:",
-        ["Perawatan", "Pemeriksaan"],
-        index=0,
-        horizontal=True
-    )
-    
-    instansi = st.radio(
-        "Pilih Instansi/Format Nama:",
-        ["BTP JAK (Format Standar)", "BTP BD (Format Khusus Sintel Boo)"],
-        index=0
-    )
-    
-    format_eksklusif = True if "BTP BD" in instansi else False
-    
-    if is_admin:
-        with st.expander("🛠️ Admin Debug Tools", expanded=False):
-            st.info("Mode Admin: Fitur bantuan teknis.")
-            debug_mode = st.checkbox("Aktifkan Layar Intip Teks Asli PDF", value=False)
-    else:
-        debug_mode = False
-
-    if "file_uploader_key" not in st.session_state:
-        st.session_state["file_uploader_key"] = 0
-
-    if st.button("🗑️ Hapus Semua File", use_container_width=True):
-        st.session_state["file_uploader_key"] += 1
-        st.rerun()
-
-    uploaded_files = st.file_uploader(
-        "Upload PDF", 
-        type="pdf", 
-        accept_multiple_files=True, 
-        key=f"uploader_{st.session_state['file_uploader_key']}"
-    )
+# ... existing code ...
 
 # --- 4. PROSES DATA ---
 if uploaded_files:
@@ -105,6 +40,8 @@ if uploaded_files:
                     target_keyword, kode_ceklis, kategori_nama = "AXLE", "BPBYE7", "AXC"
                 elif any(x in name_only for x in ["SINYAL", "BLOK", "ZP"]): 
                     target_keyword, kode_ceklis, kategori_nama = "SINYAL", "BPBYE3", "SINYAL"
+                elif any(x in name_only for x in ["FIBER OPTIK", "FO", "SERAT OPTIK", "TRANSMISI"]):
+                    target_keyword, kode_ceklis, kategori_nama = "SERAT OPTIK", "BPBYE5", "FIBER"
 
                 if target_keyword:
                     try:
@@ -182,6 +119,27 @@ if uploaded_files:
                                     aid = words[0]
                                     loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     assets_found.append({"id": aid, "loc": loc_id})
+                            
+                            # ==================== KATEGORI SERAT OPTIK ====================
+                            elif target_keyword == "SERAT OPTIK":
+                                # Cari pola "TRA***** :" di mana ***** bisa apa saja (karakter non-spasi)
+                                tra_match = re.search(r'TRA\S*\s*:', line)
+                                if tra_match:
+                                    # Mengambil bagian setelah ':'
+                                    right_side = line.split(":")[-1].strip()
+                                    
+                                    # ID Aset Spesifik: "OTB 1"
+                                    aid = "OTB 1" 
+                                    
+                                    # Lokasi adalah sisa teks setelah "OTB 1"
+                                    if aid in right_side:
+                                        loc_id_temp = right_side.split(aid, 1)[-1].strip()
+                                        loc_id = loc_id_temp if loc_id_temp else "LOKASI"
+                                    else:
+                                        loc_id = right_side if right_side else "LOKASI"
+                                    
+                                    assets_found.append({"id": aid, "loc": loc_id})
+                                    break # Hanya perlu satu deteksi per file untuk ceklis ini.
                                 
                         gc.collect() 
                     except Exception as e:
@@ -209,23 +167,4 @@ if uploaded_files:
 
         status_container.empty()
 
-        if processed_files:
-            with btn_col:
-                st.download_button(label="📥 DOWNLOAD ZIP", data=zip_buffer.getvalue(), file_name="Hasil_Rename_Sintelis_BOO.zip", mime="application/zip", use_container_width=True, type="primary")
-
-        with st.expander(f"✅ Sukses Teridentifikasi ({len(processed_files)})", expanded=True):
-            if processed_files:
-                with st.container(height=150):
-                    for p_file in processed_files: st.write(f"📄 `{p_file}`")
-            else:
-                st.write("Belum ada file yang berhasil diproses.")
-
-        with st.expander(f"❌ Gagal Diproses ({len(duplicate_errors)})", expanded=True):
-            if duplicate_errors:
-                with st.container(height=150):
-                    for err in duplicate_errors: st.warning(err)
-            else:
-                st.write("Tidak ada kendala pada file.")
-
-st.markdown("---")
-st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dikha Armansyah</b> | Sintelis 1.21 BOO Utility</div>", unsafe_allow_html=True)
+# ... existing code ...
