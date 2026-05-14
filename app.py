@@ -108,13 +108,13 @@ if uploaded_files:
 
                 if target_keyword:
                     try:
-                        # EKSTRAKSI TEKS DIRECTLY DENGAN PYPDF
+                        # 1. EKSTRAKSI TEKS DIRECTLY DENGAN PYPDF
                         pdf_file = BytesIO(f.getvalue())
                         reader = pypdf.PdfReader(pdf_file)
                         page_text = reader.pages[0].extract_text()
                         
                         if not page_text or page_text.strip() == "":
-                            duplicate_errors.append(f"❌ `{f.name}`: PDF terdeteksi kosong/berupa Gambar Hasil Scan. Metode pypdf tidak didukung.")
+                            duplicate_errors.append(f"❌ `{f.name}`: PDF terdeteksi kosong/berupa Gambar Hasil Scan.")
                             continue
 
                         text_upper = page_text.upper()
@@ -123,36 +123,44 @@ if uploaded_files:
                         if debug_mode:
                             with st.expander(f"🔍 Teks Ekstraksi Asli: {f.name}", expanded=False):
                                 st.text(page_text)
-                        
-                        noise = ["PERAWATAN", "PEMERIKSAAN", "MINGGUAN", "BULANAN", "TAHUNAN", "CEKLIS", "ULANG", 
-                                 "PENGGERAK", "WESEL", "ELEKTRIK", "AXLE", "COUNTER", "SIEMENS", "PERAGA", 
-                                 "SINYAL", "SAMPEL", "NOMOR", "INTERNAL", "TERLAYAN", "SETEMPAT", "BLOK", 
-                                 "MASUK", "KELUAR", "MUKA", "DAN", "LANGSIR", "JALAN"]
 
+                        # 2. PROSES SCANNING MULTI-LINE BERDASARKAN POLA INTERNAL KAI (WSL / AXL / SIN)
                         for line in lines:
-                            if any(k in line for k in ["SINYAL", "BLOK", "WESEL", "AXLE", "COUNTER"]):
-                                clean = line.split(":")[-1].strip() if ":" in line else line.strip()
-                                words = clean.replace(".", " ").split()
-                                final = [w for w in words if w not in noise]
-                                
-                                if final:
-                                    if final[0] == "ZP" and len(final) > 1 and any(char.isdigit() for char in final[1]):
-                                        aid = f"{final[0]} {final[1]}"
-                                        loc_id = " ".join(final[2:]) if len(final) > 2 else "LOKASI"
+                            # Pola Wesel: WSLxxxxx : PENGGERAK WESEL [AID] [LOC]
+                            if target_keyword == "WESEL" and "WSL" in line and ":" in line:
+                                right_side = line.split(":")[-1].replace("PENGGERAK WESEL", "").strip()
+                                words = right_side.split()
+                                if words:
+                                    aid = words[0] if words[0].startswith("W") else f"W{words[0]}"
+                                    loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
+                                    assets_found.append({"id": aid, "loc": loc_id})
+
+                            # Pola Axle Counter: AXLxxxxx : AXLE COUNTER [AID] [LOC]
+                            elif target_keyword == "AXLE" and "AXL" in line and ":" in line:
+                                right_side = line.split(":")[-1].replace("AXLE COUNTER", "").strip()
+                                words = right_side.split()
+                                if words:
+                                    if words[0] == "ZP" and len(words) > 1:
+                                        aid = f"ZP {words[1]}"
+                                        loc_id = " ".join(words[2:]) if len(words) > 2 else "LOKASI"
                                     else:
-                                        aid = final[0]
-                                        loc_id = " ".join(final[1:]) if len(final) > 1 else "LOKASI"
-                                    
-                                    loc_id = loc_id.replace("BUD", "BJD").strip()
-                                    
-                                    if target_keyword == "WESEL" and not aid.startswith("W"): aid = f"W{aid}"
-                                    elif target_keyword == "AXLE" and not aid.startswith("ZP"): aid = f"ZP{aid}"
+                                        aid = words[0] if words[0].startswith("ZP") else f"ZP{words[0]}"
+                                        loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
+                                    assets_found.append({"id": aid, "loc": loc_id})
+
+                            # Pola Sinyal: SINxxxxx : SINYAL BLOK [AID] [LOC]
+                            elif target_keyword == "SINYAL" and "SIN" in line and ":" in line:
+                                right_side = line.split(":")[-1].replace("SINYAL BLOK", "").strip()
+                                words = right_side.split()
+                                if words:
+                                    aid = words[0]
+                                    loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     assets_found.append({"id": aid, "loc": loc_id})
                                 
                         gc.collect() 
                     except Exception as e:
                         duplicate_errors.append(f"❌ `{f.name}`: Error Membaca PDF ({str(e)})")
-
+                        
                 if assets_found:
                     for asset in assets_found:
                         aid_clean = asset["id"].strip()
