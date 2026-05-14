@@ -117,6 +117,8 @@ if uploaded_files:
                     target_keyword, kode_ceklis, kategori_nama = "SINYAL", "BPBYE3", "SINYAL"
                 elif any(x in name_only for x in ["OPTIK", "OPTIC", "SERAT", "OTB", "TRA"]): 
                     target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "SERAT OPTIK"
+                elif any(x in name_only for x in ["TELKOM", "LUAR"]): 
+                    target_keyword, kode_ceklis, kategori_nama = "TELKOM_LUAR", "BPBKS16", "PTLS"
 
                 if target_keyword:
                     try:
@@ -216,6 +218,25 @@ if uploaded_files:
                                     else:
                                         aid = words[0] if words[0].startswith("OTB") else f"OTB {words[0]}"
                                         loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
+                                    
+                                    trace_logs.append(f"✅ SUKSES -> ID: {aid} | LOC: {loc_id}")
+                                    assets_found.append({"id": aid, "loc": loc_id})
+                            
+                            # ==================== KATEGORI TELKOM LUAR STASIUN ====================
+                            elif target_keyword == "TELKOM_LUAR" and "TRA" in line and ":" in line:
+                                trace_logs.append(f"🔍 [TELKOM LUAR] Baris asli: '{line}'")
+                                right_side = line.split(":")[-1].strip()
+                                
+                                # Hapus kata-kata operasional / noise (Sebutkan jika ada yang sering muncul)
+                                for noise in ["PERAWATAN", "PEMERIKSAAN", "TELEKOMUNIKASI"]:
+                                    right_side = right_side.replace(noise, "")
+                                right_side = right_side.strip()
+                                
+                                words = right_side.split()
+                                if words:
+                                    # Logika sementara: Ambil kata pertama sebagai ID, sisanya Lokasi
+                                    aid = words[0] 
+                                    loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     
                                     trace_logs.append(f"✅ SUKSES -> ID: {aid} | LOC: {loc_id}")
                                     assets_found.append({"id": aid, "loc": loc_id})
