@@ -6,18 +6,17 @@ import zipfile
 import platform
 import pytesseract
 import gc 
-# Tambahkan library untuk manajemen gambar
+# Library manajemen gambar dan PDF
 from io import BytesIO
 from pdf2image import convert_from_bytes
 from streamlit_lottie import st_lottie
 from PIL import ImageOps
 
 # --- 1. UTILITY FUNCTIONS & CONFIG ---
+# Konfigurasi Tesseract berdasarkan sistem operasi
 if platform.system() == "Windows":
-    # Sesuaikan path Tesseract jika berbeda di komputer lokalmu
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 else:
-    # Untuk Streamlit Cloud (Linux)
     pytesseract.pytesseract.tesseract_cmd = 'tesseract'
 
 def load_lottiefile(filepath: str):
@@ -29,8 +28,12 @@ def load_lottiefile(filepath: str):
 
 lottie_train = load_lottiefile("Metro Rail.json")
 
+# Flag session untuk mengontrol aktifasi tombol Mulai Baru
+if "download_done" not in st.session_state:
+    st.session_state.download_done = False
+
 # --- 2. LOGIKA ADMIN MODE ---
-# Mode admin aktif jika URL mengandung ?mode=admin
+# Mengaktifkan fitur tambahan jika mode admin dipicu melalui URL
 is_admin = st.query_params.get("mode") == "admin"
 
 # --- 3. TAMPILAN UTAMA ---
@@ -57,7 +60,7 @@ with col1:
     
     format_eksklusif = True if "BTP BD" in instansi else False
     
-    # Bagian Admin Debug
+    # Fitur Admin Debugging
     if is_admin:
         with st.expander("🛠️ Admin Debug Tools", expanded=False):
             st.info("Mode Admin: Fitur bantuan teknis aktif.")
@@ -65,12 +68,13 @@ with col1:
     else:
         debug_mode = False
 
-    # Tombol Hapus File
+    # Tombol Reset Manual / Hapus File
     if "file_uploader_key" not in st.session_state:
         st.session_state["file_uploader_key"] = 0
 
     if st.button("🗑️ Hapus Semua File", use_container_width=True):
         st.session_state["file_uploader_key"] += 1
+        st.session_state.download_done = False
         st.rerun()
 
     uploaded_files = st.file_uploader(
@@ -80,57 +84,26 @@ with col1:
         key=f"uploader_{st.session_state['file_uploader_key']}"
     )
 
-# --- 4. PROSES DATA ---
-# --- DI DALAM KOLOM 2 (HASIL PROSES) ---
-
-if uploaded_files:
-    # Kita buat tombol pemicu utama
-    mulai_proses = st.button("🚀 JALANKAN SCAN & RENAME", use_container_width=True, type="primary")
-
-    if mulai_proses:
-        # 1. Jalankan Seluruh Logika OCR kamu di sini
-        # (Semua variabel zip_buffer, processed_files, dll dijalankan di dalam blok ini)
+# --- 4. PROSES DATA (OTOMATIS BERJALAN) ---
+with col2:
+    if uploaded_files:
+        # Inisialisasi variabel pemrosesan
+        zip_buffer = BytesIO()
+        processed_files, duplicate_errors, unique_filenames = [], [], set() 
         
-        # ... [LOGIKA OCR LENGKAP] ...
-
-        # 2. Setelah proses OCR selesai, tampilkan dua tombol berdampingan
-        st.success("✅ Proses Selesai! Silakan unduh hasil.")
-        
-        btn_col1, btn_col2 = st.columns(2)
-        
-        with btn_col1:
-            # Tombol Download
-            download_klik = st.download_button(
-                label="📥 DOWNLOAD ZIP",
-                data=zip_buffer.getvalue(),
-                file_name="Hasil_Rename_Sintelis.zip",
-                mime="application/zip",
-                use_container_width=True
-            )
-
-        with btn_col2:
-            # Tombol Mulai Baru
-            # Akan DISABLED jika download belum diklik, dan ENABLED jika sudah diklik
-            if st.button("🔄 MULAI BARU", use_container_width=True, disabled=not download_klik):
-                st.rerun()
-
-        # 3. Tampilkan daftar file hasil di bawahnya
-        with st.expander("📋 Daftar File Berhasil", expanded=True):
-            for p_file in processed_files:
-                st.write(f"📄 `{p_file}`")
-        
-        # Animasi Lottie saat proses
+        # Area Animasi & Progress
         status_container = st.empty()
         with status_container.container():
             if lottie_train:
                 st_lottie(lottie_train, height=150, key="train_loader")
             progress_text = st.empty()
 
+        # Mulai proses pengarsipan ZIP
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_f:
             for idx, f in enumerate(uploaded_files):
-                progress_text.info(f"🚂 Memproses {idx+1}/{len(uploaded_files)} (OCR bekerja)...")
+                progress_text.info(f"🚂 Memproses {idx+1}/{len(uploaded_files)} (OCR sedang bekerja)...")
                 
-                # Ekstrak Tanggal dari Nama File Asli
+                # Pre-processing Nama File Asli (Mencari Tanggal)
                 name_only = f.name.upper()
                 tgl_match = re.search(r'(\d{2})-(\d{2})-(\d{4})', name_only)
                 
@@ -145,7 +118,7 @@ if uploaded_files:
                 
                 assets_found, target_keyword, kode_ceklis, kategori_nama = [], None, "", ""
                 
-                # Identifikasi Kategori Berdasarkan Nama File
+                # Penentuan Kategori berdasarkan Kata Kunci di Nama File
                 if any(x in name_only for x in ["WESEL", "WLSE"]): 
                     target_keyword, kode_ceklis, kategori_nama = "WESEL", "BPBYE1", "WESEL"
                 elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL", "ZP"]): 
@@ -153,28 +126,29 @@ if uploaded_files:
                 elif any(x in name_only for x in ["SINYAL", "BLOK"]): 
                     target_keyword, kode_ceklis, kategori_nama = "SINYAL", "BPBYE3", "SINYAL"
                 elif any(x in name_only for x in ["OPTIK", "OPTIC", "SERAT", "OTB"]): 
-                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "" # Kosong agar OTB dari scan tidak double
+                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "" # Kosongkan agar tidak double OTB
                 elif any(x in name_only for x in ["TELKOM", "LUAR", "PTLS"]): 
                     target_keyword, kode_ceklis, kategori_nama = "TELKOM_LUAR", "BPBKS16", "PTLS"
 
                 if target_keyword:
                     try:
-                        # 1. KONVERSI PDF KE GAMBAR (PAGE 1 SAJA)
+                        # Tahap 1: Konversi PDF ke Gambar
                         images = convert_from_bytes(f.getvalue(), dpi=150, first_page=1, last_page=1)
                         img = images[0].convert('L') 
                         img = ImageOps.autocontrast(img) 
                         
-                        # 2. CROP SETENGAH HALAMAN ATAS (OPTIMASI KECEPATAN)
+                        # Tahap 2: Crop Area Kepala Dokumen (50% Atas)
                         width, height = img.size
                         img_cropped = img.crop((0, 0, width, int(height * 0.5)))
                         
                         if debug_mode: 
-                            st.image(img_cropped, caption=f"Debug: Area Crop (50%) {f.name}")
+                            st.image(img_cropped, caption=f"Debug Visual: {f.name}")
                             
+                        # Tahap 3: OCR Scan Teks
                         text_crop = pytesseract.image_to_string(img_cropped).upper()
                         lines = [line.strip() for line in text_crop.split('\n') if line.strip()]
                         
-                        trace_logs = [] # CCTV Log Tracker
+                        trace_logs = [] # Tracker log untuk admin
 
                         for line in lines:
                             # ==================== LOGIKA WESEL ====================
@@ -188,7 +162,7 @@ if uploaded_files:
                                     aid = words[0] if words[0].startswith("W") else f"W{words[0]}"
                                     loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     assets_found.append({"id": aid, "loc": loc_id})
-                                    trace_logs.append(f"✅ OK: {aid} {loc_id}")
+                                    trace_logs.append(f"✅ OK: {aid}")
 
                             # ==================== LOGIKA AXLE COUNTER ====================
                             elif target_keyword == "AXLE" and "AXL" in line and ":" in line:
@@ -201,21 +175,22 @@ if uploaded_files:
                                     else:
                                         aid, loc_id = (words[0] if words[0].startswith("ZP") else f"ZP{words[0]}"), " ".join(words[1:])
                                     assets_found.append({"id": aid, "loc": loc_id.strip() or "LOKASI"})
-                                    trace_logs.append(f"✅ OK: {aid} {loc_id}")
+                                    trace_logs.append(f"✅ OK: {aid}")
 
                             # ==================== LOGIKA SINYAL ====================
                             elif target_keyword == "SINYAL" and "SIN" in line and ":" in line:
                                 trace_logs.append(f"🔍 [SINYAL] Baris: '{line}'")
                                 right_side = line.split(":")[-1].strip()
-                                for noise in ["DAN LANGSIR", "ULANG BLOK","SINYAL BLOK", "SINYAL MUKA", "SINYAL MASUK", "SINYAL KELUAR", "SINYAL LANGSIR", "SINYAL"]:
+                                # Noise removal termasuk "DAN LANGSIR" dan "ULANG BLOK"
+                                for noise in ["DAN LANGSIR", "ULANG BLOK","SINYAL BLOK", "SINYAL MUKA", "SINYAL MASUK", "SINYAL KELUAR", "SINYAL LANGSIR", "SINYAL", "ULANG", "BLOK"]:
                                     right_side = right_side.replace(noise, "")
                                 words = right_side.strip().split()
                                 if words:
                                     aid, loc_id = words[0], " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     assets_found.append({"id": aid, "loc": loc_id})
-                                    trace_logs.append(f"✅ OK: {aid} {loc_id}")
+                                    trace_logs.append(f"✅ OK: {aid}")
 
-                            # ==================== LOGIKA SERAT OPTIK (OTB) ====================
+                            # ==================== LOGIKA OTB ====================
                             elif target_keyword == "OPTIK" and "TRA" in line and ":" in line:
                                 trace_logs.append(f"🔍 [OTB] Baris: '{line}'")
                                 right_side = line.split(":")[-1].strip()
@@ -224,13 +199,12 @@ if uploaded_files:
                                 raw_otb = right_side.strip()
                                 words = raw_otb.split()
                                 if words:
-                                    # Ambil OTB + ID (2 kata pertama)
                                     aid = " ".join(words[:2]) if len(words) > 1 else words[0]
                                     loc_id = " ".join(words[2:]) if len(words) > 2 else ""
                                     assets_found.append({"id": aid, "loc": loc_id})
-                                    trace_logs.append(f"✅ OK: {aid} {loc_id}")
+                                    trace_logs.append(f"✅ OK: {aid}")
 
-                            # ==================== LOGIKA TELKOM LUAR (PTLS) ====================
+                            # ==================== LOGIKA PTLS ====================
                             elif target_keyword == "TELKOM_LUAR" and "TRA" in line and ":" in line:
                                 trace_logs.append(f"🔍 [PTLS] Baris: '{line}'")
                                 right_side = line.split(":")[-1].strip()
@@ -238,10 +212,9 @@ if uploaded_files:
                                     right_side = right_side.replace(noise, "")
                                 words = right_side.strip().split()
                                 if words:
-                                    # ID Dihiraukan (Abaikan kata pertama), Ambil Sisa sebagai Lokasi
                                     loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     assets_found.append({"id": "", "loc": loc_id})
-                                    trace_logs.append(f"✅ OK (ID Dihiraukan) -> LOC: {loc_id}")
+                                    trace_logs.append(f"✅ OK PTLS: {loc_id}")
 
                         if debug_mode and trace_logs:
                             with st.expander(f"🕵️ DETEKTIF LOG: {f.name}", expanded=True):
@@ -249,19 +222,17 @@ if uploaded_files:
                                     if "✅" in log: st.success(log)
                                     else: st.text(log)
 
-                        # Pembersihan Memory
+                        # Membersihkan memori gambar setelah satu file selesai
                         del img, img_cropped, images
                         gc.collect() 
                     except Exception as e:
                         duplicate_errors.append(f"❌ `{f.name}`: OCR Error ({str(e)})")
 
-                # --- 5. FINALISASI NAMA FILE ---
+                # --- 5. PERAKITAN NAMA FILE AKHIR ---
                 if assets_found:
                     for asset in assets_found:
                         aid_clean = asset["id"].strip()
                         aloc_clean = asset["loc"].strip()
-                        
-                        # Gabungkan Kategori dan ID secara bersih (Menghindari spasi ganda)
                         part_nama = f"{kategori_nama} {aid_clean}".strip()
                         
                         if format_eksklusif:
@@ -269,7 +240,7 @@ if uploaded_files:
                         else:
                             new_name = f"{jenis_kegiatan.upper()} {part_nama} {aloc_clean} {tgl_full}.pdf"
                         
-                        # Pembersihan spasi berlebih menggunakan Regex
+                        # Cleaning Final (Menghapus spasi ganda)
                         new_name = re.sub(r'\s+', ' ', new_name).strip()
                         new_name = new_name.replace("_ ", "_").replace(" _", "_")
 
@@ -278,41 +249,48 @@ if uploaded_files:
                             processed_files.append(new_name)
                             unique_filenames.add(new_name)
                         else:
-                            duplicate_errors.append(f"⚠️ `{f.name}`: Duplikat pada ID `{aid_clean or aloc_clean}`")
+                            duplicate_errors.append(f"⚠️ `{f.name}`: Duplikat pada `{aid_clean or aloc_clean}`")
                 else:
                     if f.name not in [e.split("`")[1] for e in duplicate_errors if "`" in e]:
                         duplicate_errors.append(f"🔍 `{f.name}`: Gagal identifikasi ID Aset.")
 
-        # Hapus Animasi saat selesai
+        # Tutup Animasi setelah selesai
         status_container.empty()
+        st.subheader("📋 Hasil Proses")
 
-        # Tampilkan Tombol Download
-        if processed_files:
-            with btn_col:
-                st.download_button(
-                    label="📥 DOWNLOAD ZIP", 
-                    data=zip_buffer.getvalue(), 
-                    file_name="Hasil_Rename_Sintelis_BOO.zip", 
-                    mime="application/zip", 
-                    use_container_width=True, 
-                    type="primary"
-                )
+        # AREA TOMBOL AKSI
+        btn_col1, btn_col2 = st.columns(2)
+        with btn_col1:
+            if st.download_button(
+                label="📥 DOWNLOAD ZIP", 
+                data=zip_buffer.getvalue(), 
+                file_name="Hasil_Rename_Sintelis_BOO.zip", 
+                mime="application/zip", 
+                use_container_width=True, 
+                type="primary"
+            ):
+                st.session_state.download_done = True 
 
-        # Daftar Berhasil & Gagal
+        with btn_col2:
+            # Tombol Mulai Baru yang aktif hanya setelah download dilakukan
+            if st.button("🔄 MULAI BARU", use_container_width=True, disabled=not st.session_state.download_done):
+                st.session_state.download_done = False
+                st.session_state["file_uploader_key"] += 1
+                st.rerun()
+
+        # Daftar Log Hasil ke User
         with st.expander(f"✅ Berhasil Teridentifikasi ({len(processed_files)})", expanded=True):
             if processed_files:
                 with st.container(height=150):
                     for p_file in processed_files: st.write(f"📄 `{p_file}`")
             else:
-                st.write("Belum ada file.")
+                st.write("Belum ada file berhasil.")
 
-        with st.expander(f"❌ Gagal Diproses ({len(duplicate_errors)})", expanded=True):
-            if duplicate_errors:
+        if duplicate_errors:
+            with st.expander(f"❌ Gagal Diproses ({len(duplicate_errors)})", expanded=True):
                 with st.container(height=150):
                     for err in duplicate_errors: st.warning(err)
-            else:
-                st.write("Tidak ada kendala.")
 
-# --- FOOTER ---
+# --- 5. FOOTER ---
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis 1.21 BOO Utility</div>", unsafe_allow_html=True)
