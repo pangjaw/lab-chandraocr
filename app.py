@@ -202,21 +202,19 @@ if uploaded_files:
                                     assets_found.append({"id": aid, "loc": loc_id})
 
                             # ==================== KATEGORI SERAT OPTIK ====================
+                            # ==================== OTB ====================
                             elif target_keyword == "OPTIK" and "TRA" in line and ":" in line:
                                 right_side = line.split(":")[-1].strip()
                                 for noise in ["SERAT OPTIK", "KABEL OPTIK", "KABEL"]:
                                     right_side = right_side.replace(noise, "")
-                                # Ambil OTB + ID langsung dari teks
-                                aid = right_side.strip()
-                                loc_id = "" # Kosongkan karena lokasi biasanya sudah nempel di teks OTB
-                                
-                                # Jika ingin memisahkan lokasi, kita bisa split kata pertama
-                                words = aid.split()
-                                if len(words) > 2: # Contoh: OTB 1 BOGOR
-                                    aid = " ".join(words[:2])
-                                    loc_id = " ".join(words[2:])
-                                
-                                assets_found.append({"id": aid, "loc": loc_id})
+                                # Ambil OTB + ID
+                                raw_otb = right_side.strip()
+                                words = raw_otb.split()
+                                if words:
+                                    # Pastikan OTB ada di awal ID
+                                    aid = " ".join(words[:2]) if len(words) > 1 else words[0]
+                                    loc_id = " ".join(words[2:]) if len(words) > 2 else ""
+                                    assets_found.append({"id": aid, "loc": loc_id})
                             
                             # ==================== KATEGORI TELKOM LUAR (PTLS) ====================
                             elif target_keyword == "TELKOM_LUAR" and "TRA" in line and ":" in line:
