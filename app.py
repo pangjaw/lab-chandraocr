@@ -107,7 +107,7 @@ if uploaded_files:
                 elif any(x in name_only for x in ["SINYAL", "BLOK"]): # <--- ZP SUDAH DIHAPUS DARI SINI
                     target_keyword, kode_ceklis, kategori_nama = "SINYAL", "BPBYE3", "SINYAL"
                 elif any(x in name_only for x in ["OPTIK", "OPTIC", "SERAT", "OTB", "TRA"]): 
-                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "Serat Optik"
+                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "SERAT OPTIK"
 
                 if target_keyword:
                     try:
