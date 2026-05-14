@@ -116,7 +116,7 @@ if uploaded_files:
                 elif any(x in name_only for x in ["SINYAL", "BLOK"]): 
                     target_keyword, kode_ceklis, kategori_nama = "SINYAL", "BPBYE3", "SINYAL"
                 elif any(x in name_only for x in ["OPTIK", "OPTIC", "SERAT", "OTB"]): 
-                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "OTB" # Diubah dari SERAT OPTIK ke OTB
+                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "" # Diubah dari SERAT OPTIK ke OTB
                 elif any(x in name_only for x in ["TELKOM", "LUAR"]): 
                     target_keyword, kode_ceklis, kategori_nama = "TELKOM_LUAR", "BPBKS16", "PTLS"
 
@@ -203,22 +203,20 @@ if uploaded_files:
 
                             # ==================== KATEGORI SERAT OPTIK ====================
                             elif target_keyword == "OPTIK" and "TRA" in line and ":" in line:
-                                trace_logs.append(f"🔍 [SERAT OPTIK] Baris asli: '{line}'")
                                 right_side = line.split(":")[-1].strip()
-                                
-                                # Hapus noise agar tersisa ID dan Lokasi
-                                for noise in ["SERAT OPTIK", "KABEL OPTIK", "KABEL", "OTB"]:
+                                for noise in ["SERAT OPTIK", "KABEL OPTIK", "KABEL"]:
                                     right_side = right_side.replace(noise, "")
-                                right_side = right_side.strip()
+                                # Ambil OTB + ID langsung dari teks
+                                aid = right_side.strip()
+                                loc_id = "" # Kosongkan karena lokasi biasanya sudah nempel di teks OTB
                                 
-                                words = right_side.split()
-                                if words:
-                                    # Mengambil angka/ID setelah TRA, lalu sisanya Lokasi
-                                    aid = f"OTB {words[0]}"
-                                    loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
-                                    
-                                    trace_logs.append(f"✅ SUKSES -> ID: {aid} | LOC: {loc_id}")
-                                    assets_found.append({"id": aid, "loc": loc_id})
+                                # Jika ingin memisahkan lokasi, kita bisa split kata pertama
+                                words = aid.split()
+                                if len(words) > 2: # Contoh: OTB 1 BOGOR
+                                    aid = " ".join(words[:2])
+                                    loc_id = " ".join(words[2:])
+                                
+                                assets_found.append({"id": aid, "loc": loc_id})
                             
                             # ==================== KATEGORI TELKOM LUAR (PTLS) ====================
                             elif target_keyword == "TELKOM_LUAR" and "TRA" in line and ":" in line:
