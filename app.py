@@ -47,7 +47,7 @@ with col1:
     if is_admin:
         with st.expander("🛠️ Admin Debug Tools", expanded=False):
             st.info("Mode Admin: Fitur bantuan teknis.")
-            debug_mode = st.checkbox("Aktifkan Layar Intip Teks Asli PDF", value=False)
+            debug_mode = st.checkbox("Aktifkan Layar Intip Teks & Trace Log", value=False)
     else:
         debug_mode = False
 
@@ -99,15 +99,15 @@ if uploaded_files:
                 
                 assets_found, target_keyword, kode_ceklis, kategori_nama = [], None, "", ""
                 
-                # Pindahkan "ZP" ke kelompok AXLE, dan hapus dari kelompok SINYAL
+                # Deteksi File
                 if any(x in name_only for x in ["WESEL", "WLSE"]): 
                     target_keyword, kode_ceklis, kategori_nama = "WESEL", "BPBYE1", "WESEL"
-                elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL", "ZP"]): # <--- ZP SEKARANG ADA DI SINI
+                elif any(x in name_only for x in ["AXLE", "COUNTER", "AXL", "ZP"]): 
                     target_keyword, kode_ceklis, kategori_nama = "AXLE", "BPBYE7", "AXC"
-                elif any(x in name_only for x in ["SINYAL", "BLOK"]): # <--- ZP SUDAH DIHAPUS DARI SINI
+                elif any(x in name_only for x in ["SINYAL", "BLOK"]): 
                     target_keyword, kode_ceklis, kategori_nama = "SINYAL", "BPBYE3", "SINYAL"
                 elif any(x in name_only for x in ["OPTIK", "OPTIC", "SERAT", "OTB", "TRA"]): 
-                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "SERAT OPTIK"
+                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "Serat Optik"
 
                 if target_keyword:
                     try:
@@ -124,10 +124,12 @@ if uploaded_files:
                         lines = [line.strip() for line in text_upper.split('\n') if line.strip()]
                         
                         if debug_mode:
-                            with st.expander(f"🔍 Teks Ekstraksi Asli: {f.name}", expanded=False):
+                            with st.expander(f"📄 Teks Ekstraksi Asli: {f.name}", expanded=False):
                                 st.text(page_text)
 
-                        # 2. PROSES SCANNING MULTI-LINE BERDASARKAN POLA INTERNAL KAI
+                        trace_logs = [] # <-- INISIALISASI LOG TRACKER
+
+                        # 2. PROSES SCANNING MULTI-LINE
                         for line in lines:
                             
                             # ==================== KATEGORI WESEL ====================
@@ -181,26 +183,51 @@ if uploaded_files:
                                     loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     assets_found.append({"id": aid, "loc": loc_id})
 
-                           # ==================== KATEGORI SERAT OPTIK ====================
-                            elif target_keyword == "OPTIK" and "TRA" in line:
-                                # Pakai Regex untuk menghapus 'TRAxxxxx' beserta titik dua/strip/spasi di sekitarnya
-                                # Contoh: "TRA11856: OTB 3" atau "TRA11856 OTB 3" akan sama-sama menjadi "OTB 3"
-                                right_side = re.sub(r'TRA\s*\d+\s*[:\-]?\s*', '', line).strip()
+                            # ==================== KATEGORI SERAT OPTIK ====================
+                            elif target_keyword == "OPTIK" and ("TRA" in line or "OTB" in line):
+                                trace_logs.append(f"🔍 [OPTIK] MENEMUKAN KATA KUNCI DI BARIS: '{line}'")
                                 
-                                for noise in ["SERAT OPTIK", "KABEL OPTIK", "KABEL"]:
-                                    right_side = right_side.replace(noise, "")
-                                right_side = right_side.strip()
+                                noise_optik = ["NAMA", "MOUNTING", "BRACKET", "TUTUP", "KABEL", "KONEKTOR", "ADAPTER", 
+                                               "PENGUKURAN", "REDAMAN", "RUANG", "OPTICAL", "SERAT", "OPTIK", "DISTRIBUTION", 
+                                               "TERMINATION", "BOX", "JUMLAH", "CORE", "POSISI", "CAHAYA", "NILAI", "JARAK"]
                                 
-                                words = right_side.split()
-                                if words:
-                                    if words[0] == "OTB" and len(words) > 1:
-                                        aid = f"OTB {words[1]}"
-                                        loc_id = " ".join(words[2:]) if len(words) > 2 else "LOKASI"
-                                    else:
-                                        aid = words[0] if words[0].startswith("OTB") else f"OTB {words[0]}"
-                                        loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
+                                if any(noise in line for noise in noise_optik):
+                                    trace_logs.append(f"⚠️ [OPTIK] DIBUANG: Mengandung kata instruksi kerja (Noise).")
+                                    continue
+                                
+                                right_side = re.sub(r'TRA\s*\d*\s*[:\-]?\s*', '', line).strip()
+                                trace_logs.append(f"✂️ [OPTIK] HASIL BERSIH REGEX 'TRA': '{right_side}'")
+                                
+                                if "OTB" in right_side:
+                                    right_side = right_side[right_side.find("OTB"):]
+                                    trace_logs.append(f"🎯 [OPTIK] DIPOTONG MULAI KATA 'OTB': '{right_side}'")
                                     
-                                    assets_found.append({"id": aid, "loc": loc_id})
+                                    words = right_side.split()
+                                    trace_logs.append(f"🧩 [OPTIK] KATA DIPECAH (SPLIT): {words}")
+                                    
+                                    if words:
+                                        if len(words) > 1:
+                                            aid = f"OTB {words[1]}"
+                                            loc_id = " ".join(words[2:]) if len(words) > 2 else "LOKASI"
+                                        else:
+                                            aid = words[0]
+                                            loc_id = "LOKASI"
+                                        
+                                        trace_logs.append(f"✅ [OPTIK] SUKSES TEREKAM -> ID: {aid} | LOKASI: {loc_id}")
+                                        assets_found.append({"id": aid, "loc": loc_id})
+                                else:
+                                    trace_logs.append(f"❌ [OPTIK] GAGAL: Tidak ada kata 'OTB' tersisa setelah dibersihkan.")
+
+                        # --- TAMPILKAN LOG INVESTIGASI KE LAYAR ---
+                        if debug_mode and trace_logs:
+                            with st.expander(f"🕵️ DETEKTIF LOG: {f.name}", expanded=True):
+                                for log in trace_logs:
+                                    if "SUKSES" in log:
+                                        st.success(log)
+                                    elif "GAGAL" in log or "DIBUANG" in log:
+                                        st.warning(log)
+                                    else:
+                                        st.text(log)
 
                         gc.collect() 
                     except Exception as e:
