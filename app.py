@@ -181,9 +181,11 @@ if uploaded_files:
                                     loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     assets_found.append({"id": aid, "loc": loc_id})
 
-                            # ==================== KATEGORI SERAT OPTIK ====================
-                            elif target_keyword == "OPTIK" and "TRA" in line and ":" in line:
-                                right_side = line.split(":")[-1].strip()
+                           # ==================== KATEGORI SERAT OPTIK ====================
+                            elif target_keyword == "OPTIK" and "TRA" in line:
+                                # Pakai Regex untuk menghapus 'TRAxxxxx' beserta titik dua/strip/spasi di sekitarnya
+                                # Contoh: "TRA11856: OTB 3" atau "TRA11856 OTB 3" akan sama-sama menjadi "OTB 3"
+                                right_side = re.sub(r'TRA\s*\d+\s*[:\-]?\s*', '', line).strip()
                                 
                                 for noise in ["SERAT OPTIK", "KABEL OPTIK", "KABEL"]:
                                     right_side = right_side.replace(noise, "")
