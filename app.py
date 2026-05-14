@@ -201,4 +201,4 @@ if uploaded_files:
                 st.write("Tidak ada kendala pada file.")
 
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dika Armansyah</b> | Sintelis 1.21 BOO Utility</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: grey;'>Developed by <b>Dikha Armansyah</b> | Sintelis 1.21 BOO Utility</div>", unsafe_allow_html=True)
