@@ -116,7 +116,7 @@ if uploaded_files:
                 elif any(x in name_only for x in ["SINYAL", "BLOK"]): 
                     target_keyword, kode_ceklis, kategori_nama = "SINYAL", "BPBYE3", "SINYAL"
                 elif any(x in name_only for x in ["OPTIK", "OPTIC", "SERAT", "OTB", "TRA"]): 
-                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "SERAT OPTIK"
+                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", ""
                 elif any(x in name_only for x in ["TELKOM", "LUAR"]): 
                     target_keyword, kode_ceklis, kategori_nama = "TELKOM_LUAR", "BPBKS16", "PTLS"
 
