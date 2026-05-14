@@ -178,7 +178,7 @@ if uploaded_files:
                             elif target_keyword == "SINYAL" and "SIN" in line and ":" in line:
                                 trace_logs.append(f"🔍 [SINYAL] Baris: '{line}'")
                                 right_side = line.split(":")[-1].strip()
-                                for noise in ["ULANG BLOK","SINYAL BLOK", "SINYAL MUKA", "SINYAL MASUK", "SINYAL KELUAR", "SINYAL LANGSIR", "SINYAL"]:
+                                for noise in ["DAN LANGSIR", "ULANG BLOK","SINYAL BLOK", "SINYAL MUKA", "SINYAL MASUK", "SINYAL KELUAR", "SINYAL LANGSIR", "SINYAL"]:
                                     right_side = right_side.replace(noise, "")
                                 words = right_side.strip().split()
                                 if words:
