@@ -126,20 +126,36 @@ if uploaded_files:
 
                         # 2. PROSES SCANNING MULTI-LINE BERDASARKAN POLA INTERNAL KAI (WSL / AXL / SIN)
                         for line in lines:
-                            # Pola Wesel: WSLxxxxx : PENGGERAK WESEL [AID] [LOC]
+                            
+                            # ==================== KATEGORI WESEL ====================
                             if target_keyword == "WESEL" and "WSL" in line and ":" in line:
-                                right_side = line.split(":")[-1].replace("PENGGERAK WESEL", "").strip()
+                                right_side = line.split(":")[-1].strip()
+                                
+                                # Hapus frasa operasional wesel yang panjang terlebih dahulu
+                                for jenis_wesel in ["WESEL ELEKTRIK TERLAYAN SETEMPAT", "WESEL ELEKTRIK", "PENGGERAK WESEL", "ELEKTRIK"]:
+                                    right_side = right_side.replace(jenis_wesel, "")
+                                
+                                # Hapus jika ada sisa kata "WESEL" mandiri
+                                right_side = right_side.replace("WESEL", "").strip()
+                                
                                 words = right_side.split()
                                 if words:
+                                    # Pastikan ID diawali huruf W dengan rapi
                                     aid = words[0] if words[0].startswith("W") else f"W{words[0]}"
                                     loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     assets_found.append({"id": aid, "loc": loc_id})
 
-                            # Pola Axle Counter: AXLxxxxx : AXLE COUNTER [AID] [LOC]
+                            # ==================== KATEGORI AXLE COUNTER ====================
                             elif target_keyword == "AXLE" and "AXL" in line and ":" in line:
-                                right_side = line.split(":")[-1].replace("AXLE COUNTER", "").strip()
+                                right_side = line.split(":")[-1].strip()
+                                
+                                # Bersihkan variasi teks AXLE COUNTER dan karakter titik/noise
+                                right_side = right_side.replace("AXLE.COUNTER.", "").replace("AXLE COUNTER", "")
+                                right_side = right_side.replace(".", " ").strip() # Ubah sisa titik menjadi spasi
+                                
                                 words = right_side.split()
                                 if words:
+                                    # Logika penanganan ZP
                                     if words[0] == "ZP" and len(words) > 1:
                                         aid = f"ZP {words[1]}"
                                         loc_id = " ".join(words[2:]) if len(words) > 2 else "LOKASI"
@@ -148,16 +164,13 @@ if uploaded_files:
                                         loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     assets_found.append({"id": aid, "loc": loc_id})
 
-                            # Pola Sinyal: SINxxxxx : SINYAL BLOK [AID] [LOC]
-                            # Pola Sinyal: SINxxxxx : SINYAL BLOK / MASUK / KELUAR / MUKA [AID] [LOC]
+                            # ==================== KATEGORI SINYAL ====================
                             elif target_keyword == "SINYAL" and "SIN" in line and ":" in line:
                                 right_side = line.split(":")[-1].strip()
                                 
-                                # Bersihkan semua variasi jenis sinyal operasional agar tidak ikut ke nama file
                                 for jenis_sinyal in ["SINYAL BLOK", "SINYAL MUKA", "SINYAL MASUK", "SINYAL KELUAR", "SINYAL LANGSIR"]:
                                     right_side = right_side.replace(jenis_sinyal, "")
                                 
-                                # Bersihkan juga jika ada sisa kata "SINYAL" mandiri yang tertinggal
                                 right_side = right_side.replace("SINYAL", "").strip()
                                 
                                 words = right_side.split()
