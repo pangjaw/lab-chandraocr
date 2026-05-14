@@ -115,8 +115,8 @@ if uploaded_files:
                     target_keyword, kode_ceklis, kategori_nama = "AXLE", "BPBYE7", "AXC"
                 elif any(x in name_only for x in ["SINYAL", "BLOK"]): 
                     target_keyword, kode_ceklis, kategori_nama = "SINYAL", "BPBYE3", "SINYAL"
-                elif any(x in name_only for x in ["OPTIK", "OPTIC", "SERAT", "OTB", "TRA"]): 
-                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", ""
+                elif any(x in name_only for x in ["OPTIK", "OPTIC", "SERAT", "OTB"]): 
+                    target_keyword, kode_ceklis, kategori_nama = "OPTIK", "BPBKF4", "OTB" # Diubah dari SERAT OPTIK ke OTB
                 elif any(x in name_only for x in ["TELKOM", "LUAR"]): 
                     target_keyword, kode_ceklis, kategori_nama = "TELKOM_LUAR", "BPBKS16", "PTLS"
 
@@ -206,18 +206,16 @@ if uploaded_files:
                                 trace_logs.append(f"🔍 [SERAT OPTIK] Baris asli: '{line}'")
                                 right_side = line.split(":")[-1].strip()
                                 
-                                for noise in ["SERAT OPTIK", "KABEL OPTIK", "KABEL"]:
+                                # Hapus noise agar tersisa ID dan Lokasi
+                                for noise in ["SERAT OPTIK", "KABEL OPTIK", "KABEL", "OTB"]:
                                     right_side = right_side.replace(noise, "")
                                 right_side = right_side.strip()
                                 
                                 words = right_side.split()
                                 if words:
-                                    if words[0] == "OTB" and len(words) > 1:
-                                        aid = f"OTB {words[1]}"
-                                        loc_id = " ".join(words[2:]) if len(words) > 2 else "LOKASI"
-                                    else:
-                                        aid = words[0] if words[0].startswith("OTB") else f"OTB {words[0]}"
-                                        loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
+                                    # Mengambil angka/ID setelah TRA, lalu sisanya Lokasi
+                                    aid = f"OTB {words[0]}"
+                                    loc_id = " ".join(words[1:]) if len(words) > 1 else "LOKASI"
                                     
                                     trace_logs.append(f"✅ SUKSES -> ID: {aid} | LOC: {loc_id}")
                                     assets_found.append({"id": aid, "loc": loc_id})
